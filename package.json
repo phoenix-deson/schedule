@@ -1,0 +1,9 @@
+{
+  "name": "firebase-email-job",
+  "version": "1.0.0",
+  "main": "send-emails.js",
+  "dependencies": {
+    "firebase-admin": "^12.0.0",
+    "nodemailer": "^6.9.0"
+  }
+}
