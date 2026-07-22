@@ -1,32 +1,37 @@
-name: Daily Task Email
+name: Daily Study Progress Email
 
 on:
-  # 1. ⏰ 定时任务：北京时间每天 18:25 (UTC 10:25) 执行
   schedule:
-    - cron: '37 10 * * *'
-
-  # 2. 👆 保留手动触发按钮（方便随时测试）
-  workflow_dispatch:
+    # 23:00 UTC = 07:00 next day in China Standard Time (UTC+8).
+    # Adjust the cron expression if you want a different local send time.
+    - cron: "0 23 * * *"
+  workflow_dispatch: {}   # lets you click "Run workflow" in the Actions tab to test manually
 
 jobs:
-  run-daily-job:
+  send-email:
     runs-on: ubuntu-latest
-
     steps:
-      - name: 拉取仓库代码
+      - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: 配置 Node.js 环境
+      - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 18
+          node-version: "20"
 
-      - name: 安装依赖
+      - name: Install dependencies
         run: npm install
 
-      - name: 执行发信脚本
+      - name: Send daily study email
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_PASS: ${{ secrets.SMTP_PASS }}
-        run: node send-emails.js
+          # Optional overrides — set as repo Variables (not secrets) if you need
+          # to change them, otherwise the defaults in send-emails.js are used.
+          RECIPIENT_EMAIL: ${{ vars.RECIPIENT_EMAIL }}
+          SMTP_HOST: ${{ vars.SMTP_HOST }}
+          SMTP_PORT: ${{ vars.SMTP_PORT }}
+          SMTP_SECURE: ${{ vars.SMTP_SECURE }}
+        run: npm run send-emails
