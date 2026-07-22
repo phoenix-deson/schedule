@@ -3,7 +3,7 @@ name: Daily Task Email
 on:
   # 1. ⏰ 定时任务：北京时间每天 18:25 (UTC 10:25) 执行
   schedule:
-    - cron: '17 10 * * *'
+    - cron: '26 10 * * *'
 
   # 2. 👆 保留手动触发按钮（方便随时测试）
   workflow_dispatch:
