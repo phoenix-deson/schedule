@@ -2,10 +2,8 @@ name: Daily Study Progress Email
 
 on:
   schedule:
-    # 23:00 UTC = 07:00 next day in China Standard Time (UTC+8).
-    # Adjust the cron expression if you want a different local send time.
     - cron: "0 23 * * *"
-  workflow_dispatch: {}   # lets you click "Run workflow" in the Actions tab to test manually
+  workflow_dispatch: {}
 
 jobs:
   send-email:
@@ -28,10 +26,10 @@ jobs:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_PASS: ${{ secrets.SMTP_PASS }}
-          # Optional overrides — set as repo Variables (not secrets) if you need
-          # to change them, otherwise the defaults in send-emails.js are used.
-          RECIPIENT_EMAIL: ${{ vars.RECIPIENT_EMAIL }}
-          SMTP_HOST: ${{ vars.SMTP_HOST }}
-          SMTP_PORT: ${{ vars.SMTP_PORT }}
-          SMTP_SECURE: ${{ vars.SMTP_SECURE }}
+          # 将收件人和用户名也放进 Secrets 中隐藏
+          RECIPIENT_EMAIL: ${{ secrets.RECIPIENT_EMAIL || vars.RECIPIENT_EMAIL }}
+          USER_NAME: ${{ secrets.USER_NAME || vars.USER_NAME }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST || vars.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT || vars.SMTP_PORT }}
+          SMTP_SECURE: ${{ secrets.SMTP_SECURE || vars.SMTP_SECURE }}
         run: npm run send-emails
