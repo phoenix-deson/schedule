@@ -2,7 +2,7 @@ name: Daily Study Progress Email
 
 on:
   schedule:
-    - cron: "0 23 * * *"
+    - cron: "30 13 * * *"
   workflow_dispatch: {}
 
 jobs:
