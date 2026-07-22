@@ -30,12 +30,12 @@ const transporter = nodemailer.createTransport({
 async function run() {
   console.log('🚀 开始连接 Cloud Firestore 读取 tasks 集合...');
 
-  // 3. 读取未完成 (completed == false) 且未发送过邮件提醒 (emailSent != true) 的任务
+  // 3. 读取未完成 (completed == false) 的任务
   const snapshot = await db.collection('tasks')
     .where('completed', '==', false)
     .get();
 
-  // 在内存中过滤出未发过邮件的记录（避免索引配置太复杂的组合查询）
+  // 在内存中过滤出未发过邮件的记录
   const pendingTasks = snapshot.docs.filter(doc => !doc.data().emailSent);
 
   if (pendingTasks.length === 0) {
@@ -43,43 +43,42 @@ async function run() {
     return;
   }
 
-  console.log(`✉️ 找到 ${pendingTasks.length} 条待提醒任务，开始发送邮件...`);
+  console.log(`✉️ 找到 ${pendingTasks.length} 条待提醒任务，准备发送测试邮件...`);
 
   // 4. 遍历处理每个任务
   for (const doc of pendingTasks) {
     const data = doc.data();
     
-    // 字段对应：title, type, createdAt
     const taskTitle = data.title || '未命名任务';
     const taskType = data.type || '普通';
     
-    // 如果任务数据里存了收件人 email 就发给它，没有的话默认发给你自己的 Gmail (SMTP_USER)
-    const recipientEmail = data.email || process.env.SMTP_USER;
+    // 🎯 【测试模式】：直接把收件人写死为你的测试 QQ 邮箱
+    const recipientEmail = '1336487767@qq.com';
 
-    // 格式化创建时间（将 Firestore Timestamp 转为本地时间）
+    // 格式化创建时间
     let createdAtStr = '未知时间';
     if (data.createdAt && typeof data.createdAt.toDate === 'function') {
       createdAtStr = data.createdAt.toDate().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' });
     }
 
     try {
-      // 5. 发送精美的提醒邮件
+      // 5. 发送提醒邮件
       let info = await transporter.sendMail({
         from: `"任务提醒助手" <${process.env.SMTP_USER}>`,
         to: recipientEmail,
-        subject: `⏰ [每日任务提醒] ${taskTitle}`,
+        subject: `⏰ [测试提醒] 任务：${taskTitle}`,
         html: `
           <div style="max-width: 500px; margin: 0 auto; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 20px; border: 1px solid #e1e4e8; border-radius: 8px;">
-            <h2 style="color: #0366d6; margin-top: 0;">📋 待完成任务提醒</h2>
-            <p style="color: #333;">你好！你在系统中有一个未完成的任务，请及时打卡：</p>
+            <h2 style="color: #0366d6; margin-top: 0;">📋 待完成任务提醒（测试发信）</h2>
+            <p style="color: #333;">你好！这是一封发送至 <strong>1336487767@qq.com</strong> 的测试提醒：</p>
             <div style="background-color: #f6f8fa; padding: 15px; border-radius: 6px; margin: 15px 0;">
               <p style="margin: 5px 0;"><strong>任务内容：</strong> ${taskTitle}</p>
               <p style="margin: 5px 0;"><strong>任务类型：</strong> <span style="background: #28a745; color: white; padding: 2px 6px; border-radius: 3px; font-size: 12px;">${taskType}</span></p>
               <p style="margin: 5px 0; color: #666; font-size: 13px;"><strong>创建时间：</strong> ${createdAtStr}</p>
             </div>
-            <p style="color: #d73a49; font-size: 13px;">💡 完成后记得去网页打卡将状态改为已完成哦！</p>
+            <p style="color: #d73a49; font-size: 13px;">💡 此邮件由 GitHub Actions 手动点击触发发送！</p>
             <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;" />
-            <small style="color: #6a737d;">此邮件由 GitHub Actions 每日自动推送</small>
+            <small style="color: #6a737d;">GitHub Actions 手动测试运行</small>
           </div>
         `
       });
