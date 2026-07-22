@@ -15,7 +15,7 @@ if (!FIREBASE_SERVICE_ACCOUNT || !DEEPSEEK_API_KEY || !SMTP_USER || !SMTP_PASS) 
 }
 
 // Hidden variables & fallback defaults
-const USER_NAME = env.USER_NAME || "Student";
+const USER_NAME = env.USER_NAME || "Friend";
 const RECIPIENT_EMAIL = env.RECIPIENT_EMAIL || "1336487767@qq.com";
 const SMTP_HOST = env.SMTP_HOST || "smtp.gmail.com";
 const SMTP_PORT = Number(env.SMTP_PORT || 465);
@@ -70,25 +70,24 @@ async function fetchData() {
   return { todayTasks, streak };
 }
 
-/* ---------- 5. AI English Note Generation ---------- */
+/* ---------- 5. AI Warm & Encouraging Note ---------- */
 async function generateAiNote({ doneTasks, todoTasks, streak }) {
-  const prompt = `You are the AI study assistant for "Super Study Calendar".
-Generate a short, warm, and encouraging daily progress email note for the user.
+  const prompt = `You are a warm, empathetic, and highly supportive personal study companion for ${USER_NAME}.
+Write a deeply encouraging daily email message in English.
 
-User Info:
+Data for Today (${today}):
 - User Name: ${USER_NAME}
-- Date: ${today}
 - Completed Tasks: ${doneTasks.length}
 - Pending Tasks: ${todoTasks.length}
 - Pending Task Titles: ${todoTasks.map((t) => t.title).join(", ") || "None"}
 - Current Streak: ${streak.current || 0} day(s)
 
-Requirements:
-1. Write in clear, natural, and friendly English.
-2. Greeting format: "Hi ${USER_NAME}!"
-3. Mention today's stats (e.g., "You completed ${doneTasks.length} task(s) today with ${todoTasks.length} remaining, go finish them up!").
-4. If there are pending tasks, gently motivate them to tackle those specific items. If all tasks are completed, praise them warmly.
-5. Keep it under 100 words. Plain text only (no markdown symbols like # or **).`;
+Writing Instructions:
+1. Start with a warm greeting: "Hi ${USER_NAME}!"
+2. Celebrate their hard work today (${doneTasks.length} completed). If they have remaining tasks (${todoTasks.length} left), motivate them gently without causing stress.
+3. IMPORTANT: Include a thoughtful, caring reminder to take care of themselves, rest well, and recharge (e.g., "Don't forget to take breaks, get enough sleep, and take good care of yourself!").
+4. Tone: Inspiring, friendly, caring, and uplifting.
+5. Keep it around 120-150 words. Plain text only (no markdown like # or **).`;
 
   const resp = await fetch("https://api.deepseek.com/chat/completions", {
     method: "POST",
@@ -99,7 +98,7 @@ Requirements:
     body: JSON.stringify({
       model: "deepseek-chat",
       messages: [{ role: "user", content: prompt }],
-      temperature: 0.7,
+      temperature: 0.75,
     }),
   });
 
@@ -110,11 +109,11 @@ Requirements:
   const json = await resp.json();
   return (
     json.choices?.[0]?.message?.content?.trim() ||
-    `Hi ${USER_NAME}! Keep pushing forward with your studies today!`
+    `Hi ${USER_NAME}! You're doing an amazing job. Remember to stay hydrated and take a good rest tonight!`
   );
 }
 
-/* ---------- 6. HTML Card Template (English) ---------- */
+/* ---------- 6. Clean HTML Card Template ---------- */
 function buildCardHtml(aiContent, { doneTasks, todoTasks, streak }) {
   const todoListHtml =
     todoTasks.length > 0
@@ -128,7 +127,7 @@ function buildCardHtml(aiContent, { doneTasks, todoTasks, streak }) {
               }</li>`
           )
           .join("")
-      : `<li style="color:#10B981;">🎉 All tasks completed today! Great job!</li>`;
+      : `<li style="color:#10B981;">🎉 All tasks completed today! Time to relax!</li>`;
 
   const doneListHtml =
     doneTasks.length > 0
@@ -146,13 +145,12 @@ function buildCardHtml(aiContent, { doneTasks, todoTasks, streak }) {
       
       <!-- Card Header -->
       <div style="background: linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%); padding: 24px; color: #ffffff;">
-        <div style="font-size: 13px; text-transform: uppercase; letter-spacing: 1px; opacity: 0.85;">Super Study Calendar</div>
-        <h2 style="margin: 8px 0 0 0; font-size: 22px; font-weight: 700;">Daily Study Report 📅</h2>
-        <div style="margin-top: 4px; font-size: 13px; opacity: 0.9;">${today} · ${streak.current || 0}-day streak</div>
+        <h2 style="margin: 0; font-size: 22px; font-weight: 700;">Daily Study Report 📅</h2>
+        <div style="margin-top: 6px; font-size: 13px; opacity: 0.9;">${today} · ${streak.current || 0}-day streak</div>
       </div>
 
       <!-- Core Stats Panel -->
-      <div style="padding: 20px 24px 10px 24px;">
+      <div style="padding: 24px 24px 20px 24px;">
         <div style="display: flex; gap: 12px; margin-bottom: 20px;">
           <div style="flex: 1; background: #ECFDF5; border: 1px solid #A7F3D0; border-radius: 12px; padding: 14px; text-align: center;">
             <div style="font-size: 24px; font-weight: 800; color: #059669;">${doneTasks.length}</div>
@@ -164,7 +162,7 @@ function buildCardHtml(aiContent, { doneTasks, todoTasks, streak }) {
           </div>
         </div>
 
-        <!-- AI Note Card -->
+        <!-- AI Warm Encouragement Card -->
         <div style="background: #F9FAFB; border-left: 4px solid #6366F1; border-radius: 4px 8px 8px 4px; padding: 16px; margin-bottom: 24px;">
           <div style="font-size: 14px; line-height: 1.6; color: #374151; white-space: pre-wrap;">${aiContent}</div>
         </div>
@@ -186,10 +184,6 @@ function buildCardHtml(aiContent, { doneTasks, todoTasks, streak }) {
         </div>
       </div>
 
-      <!-- Footer -->
-      <div style="background: #F9FAFB; padding: 16px 24px; text-align: center; font-size: 12px; color: #9CA3AF; border-top: 1px solid #F3F4F6;">
-        Sent by Super Study Calendar Assistant · Stay focused and keep growing!
-      </div>
     </div>
   </div>
   `;
@@ -208,13 +202,13 @@ async function sendEmail(aiText, { doneTasks, todoTasks, streak }) {
 
   const subject =
     todoTasks.length > 0
-      ? `📘 Hi ${USER_NAME}, you completed ${doneTasks.length} task(s) today, ${todoTasks.length} left!`
+      ? `📘 Hi ${USER_NAME}, ${doneTasks.length} task(s) done today, ${todoTasks.length} left!`
       : `🎉 Hi ${USER_NAME}, all tasks completed today! Great job!`;
 
   const htmlBody = buildCardHtml(aiText, { doneTasks, todoTasks, streak });
 
   await transporter.sendMail({
-    from: `"Super Study Calendar" <${SMTP_USER}>`,
+    from: SMTP_USER,
     to: RECIPIENT_EMAIL,
     subject,
     text: aiText,
