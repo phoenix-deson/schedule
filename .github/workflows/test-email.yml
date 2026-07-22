@@ -1,11 +1,15 @@
-name: Manual Test Email
+name: Daily Task Email
 
 on:
-  # 仅保留手动触发功能，不设置任何 cron 定时
+  # 1. ⏰ 定时任务：北京时间每天 18:25 (UTC 10:25) 执行
+  schedule:
+    - cron: '25 10 * * *'
+
+  # 2. 👆 保留手动触发按钮（方便随时测试）
   workflow_dispatch:
 
 jobs:
-  run-manual-test:
+  run-daily-job:
     runs-on: ubuntu-latest
 
     steps:
@@ -20,7 +24,7 @@ jobs:
       - name: 安装依赖
         run: npm install
 
-      - name: 执行发信测试脚本
+      - name: 执行发信脚本
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
           SMTP_USER: ${{ secrets.SMTP_USER }}
