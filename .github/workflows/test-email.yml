@@ -1,22 +1,18 @@
-name: Test and Send Email
+name: Manual Test Email
 
 on:
-  # 允许在 GitHub 网页上手动点击按钮触发测试
+  # 仅保留手动触发功能，不设置任何 cron 定时
   workflow_dispatch:
-  
-  # 定时任务：每天 UTC 0:00 (北京时间 早上 08:00) 运行
-  schedule:
-    - cron: '0 0 * * *'
 
 jobs:
-  send-mail-job:
+  run-manual-test:
     runs-on: ubuntu-latest
 
     steps:
       - name: 拉取仓库代码
         uses: actions/checkout@v4
 
-      - name: 安装 Node.js 环境
+      - name: 配置 Node.js 环境
         uses: actions/setup-node@v4
         with:
           node-version: 18
@@ -24,9 +20,8 @@ jobs:
       - name: 安装依赖
         run: npm install
 
-      - name: 执行发信脚本
+      - name: 执行发信测试脚本
         env:
-          # 传入在 GitHub Secrets 中配置好的 3 个环境变量
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_PASS: ${{ secrets.SMTP_PASS }}
