@@ -492,10 +492,17 @@ function applySettingsToUI(){
 /* ---------------- tasks: live sync ---------------- */
 function listenTasks(){
   if(unsubTasks) unsubTasks();
-  const q = query(collection(db,'tasks'), where('userId','==',uid));
+  
+  // 【修改点】：移除 where('userId','==',uid) 过滤，读取集合里的所有数据
+  const q = query(collection(db,'tasks')); 
+  
   unsubTasks = onSnapshot(q, (snap)=>{
     tasks = snap.docs.map(d=>({ id:d.id, ...d.data() }));
     renderAll();
+  }, (error) => {
+    // 增加错误捕获，如果数据库读取失败会在此提示
+    console.error("读取数据库任务失败:", error);
+    toast("读取数据失败: " + error.message);
   });
 }
 
@@ -578,8 +585,11 @@ function onSnapshotStreak(){
 
 /* ---------------- templates ---------------- */
 async function loadTemplates(){
-  onSnapshot(query(collection(db,'templates'), where('userId','==',uid)), (snap)=>{
+  // 【修改点】：移除 userId 过滤
+  onSnapshot(query(collection(db,'templates')), (snap)=>{
     templates = snap.docs.map(d=>({id:d.id, ...d.data()}));
+  }, (error) => {
+    console.error("读取模板失败:", error);
   });
 }
 async function applyTemplate(tpl, targetDate){
