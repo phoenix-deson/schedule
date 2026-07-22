@@ -81,9 +81,6 @@
   .stat-chip{flex:1;min-width:110px;background:var(--paper);border-radius:10px;padding:12px 14px;}
   .stat-chip .num{font-size:22px;font-weight:600;}
   .stat-chip .lbl{font-size:11px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.5px;}
-  .ring-wrap{display:flex;align-items:center;gap:18px;}
-  .streak-flame{font-size:28px;}
-  .glyph-cycle{font-size:13px;color:var(--ink-soft);letter-spacing:3px;margin-top:2px;}
 
   /* ---------- task list ---------- */
   .section-title{display:flex;justify-content:space-between;align-items:center;margin:26px 0 10px;}
@@ -92,7 +89,6 @@
     display:flex;align-items:center;gap:12px;background:var(--surface);border:1px solid var(--line);
     border-radius:12px;padding:12px 14px;margin-bottom:8px;cursor:grab;transition:opacity .2s;
   }
-  .task[draggable="true"]:active{cursor:grabbing;}
   .task.done{opacity:.55;}
   .chk{
     width:26px;height:26px;border-radius:50%;border:1.5px solid var(--line);background:var(--paper);
@@ -194,9 +190,7 @@
     <!-- ============ TODAY ============ -->
     <section id="view-today">
       <div class="topbar">
-        <div>
-          <div style="font-size:12px;color:var(--ink-soft);letter-spacing:.5px;text-transform:uppercase;" id="signedInAs"></div>
-        </div>
+        <div></div>
         <div class="topbar-actions">
           <button class="pill-btn" id="btnNewTask">+ <span data-en>New task</span><span data-zh>新建任务</span></button>
           <button class="pill-btn" id="btnCopyYesterday"><span data-en>Copy yesterday</span><span data-zh>复制昨天</span></button>
@@ -213,7 +207,7 @@
           <div class="weekday" id="bigWeekday">--</div>
           <div class="goal-row">
             <span style="color:var(--ink-soft);">✎</span>
-            <input class="goal-input" id="goalInput" placeholder="Today's one-line goal…" data-en-ph="Today's one-line goal…" data-zh-ph="今日一句话目标…" />
+            <input class="goal-input" id="goalInput" placeholder="Today's one-line goal…" />
           </div>
           <div class="stat-row">
             <div class="stat-chip"><div class="num mono" id="statDone">0/0</div><div class="lbl" data-en>Completed</div><div class="lbl" data-zh>已完成</div></div>
@@ -292,16 +286,10 @@
       <div class="card">
         <div id="tagListSettings" style="margin-bottom:12px;"></div>
         <div style="display:flex;gap:8px;">
-          <input class="text-input" id="newTagName" placeholder="New tag" data-en-ph="New tag" data-zh-ph="新标签" style="flex:1;">
+          <input class="text-input" id="newTagName" placeholder="New tag" style="flex:1;">
           <input type="color" id="newTagColor" value="#2E8B74">
           <button class="pill-btn" id="btnAddTag">+</button>
         </div>
-      </div>
-      <div class="section-title"><h2 data-en>Account</h2><h2 data-zh>账户</h2></div>
-      <div class="card">
-        <p style="font-size:13px;color:var(--ink-soft);" data-en>Sign in with Google to sync your plan across every device in real time.</p>
-        <p style="font-size:13px;color:var(--ink-soft);" data-zh>使用 Google 账号登录，即可在所有设备间实时同步你的计划。</p>
-        <div id="authArea"></div>
       </div>
     </section>
   </main>
@@ -381,628 +369,631 @@
 
 <div class="toast" id="toast"></div>
 
+<!-- ============ FIREBASE & APP SCRIPT ============ -->
 <script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-app.js";
-import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-analytics.js";
-import {
-  getAuth, GoogleAuthProvider, signInWithPopup, signInAnonymously,
-  onAuthStateChanged, signOut
-} from "https://www.gstatic.com/firebasejs/12.16.0/firebase-auth.js";
-import {
-  getFirestore, collection, doc, setDoc, addDoc, updateDoc, deleteDoc,
-  onSnapshot, query, where, getDocs, serverTimestamp
-} from "https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js";
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-app.js";
+  import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-analytics.js";
+  import { getFirestore, collection, getDocs, addDoc, updateDoc, deleteDoc, doc } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js";
 
-const firebaseConfig = {
-  apiKey: "AIzaSyA7e7n4EtWlglUjUzA77J1C3a-vYxc4AH4",
-  authDomain: "schedule-36562.firebaseapp.com",
-  projectId: "schedule-36562",
-  storageBucket: "schedule-36562.firebasestorage.app",
-  messagingSenderId: "157226250927",
-  appId: "1:157226250927:web:b2c128780052e88ccada5a",
-  measurementId: "G-1KPYMNP5ZS"
-};
-const app = initializeApp(firebaseConfig);
-const analytics = getAnalytics(app);
-const auth = getAuth(app);
-const db = getFirestore(app);
-
-/* ---------------- state ---------------- */
-let uid = null;
-let tasks = [];              // all tasks for the signed-in user (live)
-let unsubTasks = null;
-let settings = { theme:'light', lang:'en', timeFormat:'24', homePage:'today', autoPostpone:true, reminders:false, tags:defaultTags() };
-let templates = [];
-let streakInfo = { current:0, longest:0, lastCompletedDate:null };
-let selectedCalDate = fmtDate(new Date());
-let calCursor = new Date();
-let editingTaskId = null;
-let selectedTag = 'study';
-let selectedWeekdays = [];
-
-function defaultTags(){
-  return [
-    { id:'study', name:'Study', nameZh:'学习', color:'#2E8B74' },
-    { id:'work', name:'Work', nameZh:'工作', color:'#3A6EA5' },
-    { id:'reading', name:'Reading', nameZh:'阅读', color:'#D9A441' },
-    { id:'fitness', name:'Fitness', nameZh:'健身', color:'#E4572E' },
-    { id:'fun', name:'Entertainment', nameZh:'娱乐', color:'#9B5DE5' },
-  ];
-}
-
-/* ---------------- helpers ---------------- */
-function fmtDate(d){ const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0'),day=String(d.getDate()).padStart(2,'0'); return `${y}-${m}-${day}`; }
-function todayStr(){ return fmtDate(new Date()); }
-function addDays(dateStr,n){ const d=new Date(dateStr+'T00:00:00'); d.setDate(d.getDate()+n); return fmtDate(d); }
-function toast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),1800); }
-function tagById(id){ return settings.tags.find(t=>t.id===id) || settings.tags[0]; }
-function fmtTime(t){ if(!t) return ''; if(settings.timeFormat==='24') return t; const [h,m]=t.split(':').map(Number); const ap=h>=12?'PM':'AM'; const h12=((h+11)%12)+1; return `${h12}:${String(m).padStart(2,'0')} ${ap}`; }
-
-/* ---------------- auth ---------------- */
-document.getElementById('authArea').innerHTML = renderAuthArea();
-function renderAuthArea(){
-  return `<div style="display:flex;gap:8px;flex-wrap:wrap;">
-    <button class="pill-btn primary" id="btnGoogleSignIn">Sign in with Google</button>
-    <button class="pill-btn" id="btnSignOut">Sign out</button>
-  </div>`;
-}
-document.addEventListener('click', (e)=>{
-  if(e.target.id==='btnGoogleSignIn'){ signInWithPopup(auth, new GoogleAuthProvider()).catch(err=>toast(err.message)); }
-  if(e.target.id==='btnSignOut'){ signOut(auth); }
-});
-
-onAuthStateChanged(auth, async (user)=>{
-  if(!user){ signInAnonymously(auth).catch(err=>console.error(err)); return; }
-  uid = user.uid;
-  document.getElementById('signedInAs').textContent = user.isAnonymous ? 'Guest mode — sign in to sync across devices' : (user.email || user.displayName || 'Signed in');
-  await loadSettings();
-  await loadTemplates();
-  listenTasks();
-});
-
-/* ---------------- settings persistence ---------------- */
-async function loadSettings(){
-  const ref = doc(db,'settings',uid);
-  onSnapshot(ref, (snap)=>{
-    if(snap.exists()){
-      settings = { ...settings, ...snap.data() };
-      if(!settings.tags || !settings.tags.length) settings.tags = defaultTags();
-      applySettingsToUI();
-    } else {
-      setDoc(ref, settings);
-    }
-  });
-}
-async function saveSettings(){ await setDoc(doc(db,'settings',uid), settings, {merge:true}); }
-
-function applySettingsToUI(){
-  document.documentElement.setAttribute('data-theme', settings.theme);
-  document.documentElement.setAttribute('data-lang', settings.lang);
-  document.getElementById('swTheme').classList.toggle('on', settings.theme==='dark');
-  document.getElementById('selLang').value = settings.lang;
-  document.getElementById('selTimeFmt').value = settings.timeFormat;
-  document.getElementById('selHome').value = settings.homePage;
-  document.getElementById('swAuto').classList.toggle('on', !!settings.autoPostpone);
-  document.getElementById('swReminders').classList.toggle('on', !!settings.reminders);
-  renderTagSettings();
-  renderTagPicker();
-  renderAll();
-}
-
-/* ---------------- tasks: live sync ---------------- */
-function listenTasks(){
-  if(unsubTasks) unsubTasks();
-  
-  // 【修改点】：移除 where('userId','==',uid) 过滤，读取集合里的所有数据
-  const q = query(collection(db,'tasks')); 
-  
-  unsubTasks = onSnapshot(q, (snap)=>{
-    tasks = snap.docs.map(d=>({ id:d.id, ...d.data() }));
-    renderAll();
-  }, (error) => {
-    // 增加错误捕获，如果数据库读取失败会在此提示
-    console.error("读取数据库任务失败:", error);
-    toast("读取数据失败: " + error.message);
-  });
-}
-
-async function createTask(data){
-  const base = {
-    userId: uid, title: data.title, description: data.notes||'', date: data.date,
-    startTime: data.start||'', endTime: data.end||'', status: 'todo', progress: 0,
-    priority: data.priority, tag: data.tag, color: tagById(data.tag).color,
-    repeatType: data.repeat, repeatEndDate: data.repeatEnd || null,
-    createdAt: serverTimestamp(), updatedAt: serverTimestamp(), completedAt: null
+  const firebaseConfig = {
+    apiKey: "AIzaSyA7e7n4EtWlglUjUzA77J1C3a-vYxc4AH4",
+    authDomain: "schedule-36562.firebaseapp.com",
+    projectId: "schedule-36562",
+    storageBucket: "schedule-36562.firebasestorage.app",
+    messagingSenderId: "157226250927",
+    appId: "1:157226250927:web:b2c128780052e88ccada5a",
+    measurementId: "G-1KPYMNP5ZS"
   };
-  const dates = expandRepeatDates(data.date, data.repeat, data.weekdays, data.repeatEnd);
-  const groupId = dates.length>1 ? cryptoId() : null;
-  for(const d of dates){
-    await addDoc(collection(db,'tasks'), { ...base, date:d, repeatGroupId: groupId });
+
+  // Initialize Firebase & Firestore
+  const app = initializeApp(firebaseConfig);
+  const analytics = getAnalytics(app);
+  const db = getFirestore(app);
+
+  /* ---------------- state ---------------- */
+  let tasks = [];
+  let settings = { theme:'light', lang:'en', timeFormat:'24', homePage:'today', autoPostpone:true, reminders:false, tags:defaultTags() };
+  let templates = [];
+  let streakInfo = { current:0, longest:0, lastCompletedDate:null };
+  let selectedCalDate = fmtDate(new Date());
+  let calCursor = new Date();
+  let editingTaskId = null;
+  let selectedTag = 'study';
+  let selectedWeekdays = [];
+
+  function defaultTags(){
+    return [
+      { id:'study', name:'Study', nameZh:'学习', color:'#2E8B74' },
+      { id:'work', name:'Work', nameZh:'工作', color:'#3A6EA5' },
+      { id:'reading', name:'Reading', nameZh:'阅读', color:'#D9A441' },
+      { id:'fitness', name:'Fitness', nameZh:'健身', color:'#E4572E' },
+      { id:'fun', name:'Entertainment', nameZh:'娱乐', color:'#9B5DE5' },
+    ];
   }
-}
-function cryptoId(){ return 'g_'+Math.random().toString(36).slice(2,10); }
 
-function expandRepeatDates(startDate, repeat, weekdays, endDate){
-  if(repeat==='none') return [startDate];
-  // 若用户指定了结束日期（如 7.22 到 8.22），按该范围生成；否则用默认范围
-  // （每天/每周/每月 90 天，每年 3 年），并设一个 3 年的硬上限防止误操作生成过多数据。
-  const defaultHorizon = repeat==='yearly' ? 365*3 : 90;
-  const hardCapDays = 365*3;
-  let horizonDays = defaultHorizon;
-  if(endDate){
-    const start0 = new Date(startDate+'T00:00:00');
-    const end0 = new Date(endDate+'T00:00:00');
-    const diff = Math.floor((end0-start0)/86400000)+1;
-    horizonDays = Math.max(1, Math.min(diff, hardCapDays));
+  /* ---------------- helpers ---------------- */
+  function generateId() { return 'id_' + Math.random().toString(36).substr(2, 9); }
+  function fmtDate(d){ const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0'),day=String(d.getDate()).padStart(2,'0'); return `${y}-${m}-${day}`; }
+  function todayStr(){ return fmtDate(new Date()); }
+  function addDays(dateStr,n){ const d=new Date(dateStr+'T00:00:00'); d.setDate(d.getDate()+n); return fmtDate(d); }
+  function toast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),1800); }
+  function tagById(id){ return settings.tags.find(t=>t.id===id) || settings.tags[0]; }
+  function fmtTime(t){ if(!t) return ''; if(settings.timeFormat==='24') return t; const [h,m]=t.split(':').map(Number); const ap=h>=12?'PM':'AM'; const h12=((h+11)%12)+1; return `${h12}:${String(m).padStart(2,'0')} ${ap}`; }
+
+  /* ---------------- Firebase Firestore CRUD ---------------- */
+  async function fetchTasksFromDB() {
+    try {
+      const querySnapshot = await getDocs(collection(db, "tasks"));
+      tasks = [];
+      querySnapshot.forEach((docSnap) => {
+        tasks.push({ firestoreId: docSnap.id, ...docSnap.data() });
+      });
+      renderAll();
+    } catch (error) {
+      console.error("Error reading tasks: ", error);
+      toast("DB Read Error");
+    }
   }
-  const out = [];
-  const start = new Date(startDate+'T00:00:00');
-  for(let i=0;i<horizonDays;i++){
-    const d = new Date(start); d.setDate(d.getDate()+i);
-    const ds = fmtDate(d);
-    if(repeat==='daily') out.push(ds);
-    else if(repeat==='weekly' && d.getDay()===start.getDay()) out.push(ds);
-    else if(repeat==='monthly' && d.getDate()===start.getDate()) out.push(ds);
-    else if(repeat==='yearly' && d.getDate()===start.getDate() && d.getMonth()===start.getMonth()) out.push(ds);
-    else if(repeat==='custom' && weekdays && weekdays.includes(d.getDay())) out.push(ds);
+
+  async function createTasksInDB(newTasksArray) {
+    try {
+      for (const t of newTasksArray) {
+        const docRef = await addDoc(collection(db, "tasks"), t);
+        t.firestoreId = docRef.id;
+        tasks.push(t);
+      }
+      renderAll();
+      toast('Saved to DB');
+    } catch (error) {
+      console.error("Error writing tasks: ", error);
+      toast("DB Write Error");
+    }
   }
-  return out.length ? out : [startDate];
-}
 
-async function updateTask(id, patch){ await updateDoc(doc(db,'tasks',id), { ...patch, updatedAt: serverTimestamp() }); }
-async function deleteTask(id){ await deleteDoc(doc(db,'tasks',id)); }
+  async function updateTaskInDB(id, patch) {
+    try {
+      const taskObj = tasks.find(t => t.id === id || t.firestoreId === id);
+      if (!taskObj || !taskObj.firestoreId) return;
+      
+      const docRef = doc(db, "tasks", taskObj.firestoreId);
+      await updateDoc(docRef, patch);
+      
+      Object.assign(taskObj, patch, { updatedAt: new Date().toISOString() });
+      renderAll();
+    } catch (error) {
+      console.error("Error updating task: ", error);
+      toast("DB Update Error");
+    }
+  }
 
-async function cycleStatus(t){
-  const order = ['todo','doing','done'];
-  const next = order[(order.indexOf(t.status)+1)%order.length];
-  const patch = { status: next, progress: next==='done'?100:(next==='doing'?50:0) };
-  patch.completedAt = next==='done' ? serverTimestamp() : null;
-  await updateTask(t.id, patch);
-  if(next==='done') maybeUpdateStreak();
-}
+  async function deleteTaskFromDB(id) {
+    try {
+      const taskObj = tasks.find(t => t.id === id || t.firestoreId === id);
+      if (!taskObj || !taskObj.firestoreId) return;
 
-async function maybeUpdateStreak(){
-  const ref = doc(db,'streaks',uid);
-  const todaysTasks = tasks.filter(t=>t.date===todayStr());
-  const allDone = todaysTasks.length>0 && todaysTasks.every(t=>t.status==='done');
-  if(!allDone) return;
-  const snap = await getDocs(query(collection(db,'streaks')));
-  let cur = streakInfo.current, longest = streakInfo.longest, last = streakInfo.lastCompletedDate;
-  if(last===todayStr()) return;
-  if(last===addDays(todayStr(),-1)) cur += 1; else cur = 1;
-  longest = Math.max(longest, cur);
-  streakInfo = { current:cur, longest, lastCompletedDate: todayStr() };
-  await setDoc(ref, streakInfo);
-}
-onSnapshotStreak();
-function onSnapshotStreak(){
-  if(!uid) { setTimeout(onSnapshotStreak, 500); return; }
-  onSnapshot(doc(db,'streaks',uid), (snap)=>{
-    if(snap.exists()) streakInfo = snap.data();
-    renderToday(); renderStats();
-  });
-}
+      await deleteDoc(doc(db, "tasks", taskObj.firestoreId));
+      tasks = tasks.filter(t => t.id !== id && t.firestoreId !== id);
+      renderAll();
+      toast('Deleted from DB');
+    } catch (error) {
+      console.error("Error deleting task: ", error);
+      toast("DB Delete Error");
+    }
+  }
 
-/* ---------------- templates ---------------- */
-async function loadTemplates(){
-  // 【修改点】：移除 userId 过滤
-  onSnapshot(query(collection(db,'templates')), (snap)=>{
-    templates = snap.docs.map(d=>({id:d.id, ...d.data()}));
-  }, (error) => {
-    console.error("读取模板失败:", error);
-  });
-}
-async function applyTemplate(tpl, targetDate){
-  for(const item of tpl.tasks){
-    await addDoc(collection(db,'tasks'), {
-      userId: uid, title:item.title, description:'', date: targetDate,
+  /* ---------------- Local Storage (Settings & Templates) ---------------- */
+  function saveSettings() { localStorage.setItem('studyos_settings', JSON.stringify(settings)); applySettingsToUI(); }
+  function saveTemplates() { localStorage.setItem('studyos_templates', JSON.stringify(templates)); }
+  function saveStreak() { localStorage.setItem('studyos_streak', JSON.stringify(streakInfo)); }
+
+  function applySettingsToUI(){
+    document.documentElement.setAttribute('data-theme', settings.theme);
+    document.documentElement.setAttribute('data-lang', settings.lang);
+    document.getElementById('swTheme').classList.toggle('on', settings.theme==='dark');
+    document.getElementById('selLang').value = settings.lang;
+    document.getElementById('selTimeFmt').value = settings.timeFormat;
+    document.getElementById('selHome').value = settings.homePage;
+    document.getElementById('swAuto').classList.toggle('on', !!settings.autoPostpone);
+    document.getElementById('swReminders').classList.toggle('on', !!settings.reminders);
+    renderTagSettings();
+    renderTagPicker();
+    renderAll();
+  }
+
+  /* ---------------- task handlers ---------------- */
+  window.createTask = async function(data){
+    const base = {
+      id: generateId(),
+      title: data.title, description: data.notes||'', date: data.date,
+      startTime: data.start||'', endTime: data.end||'', status: 'todo', progress: 0,
+      priority: data.priority, tag: data.tag, color: tagById(data.tag).color,
+      repeatType: data.repeat, repeatEndDate: data.repeatEnd || null,
+      createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), completedAt: null
+    };
+    const dates = expandRepeatDates(data.date, data.repeat, data.weekdays, data.repeatEnd);
+    const groupId = dates.length>1 ? generateId() : null;
+    const toAdd = dates.map(d => ({ ...base, id: generateId(), date: d, repeatGroupId: groupId }));
+    await createTasksInDB(toAdd);
+  }
+
+  function expandRepeatDates(startDate, repeat, weekdays, endDate){
+    if(repeat==='none') return [startDate];
+    const defaultHorizon = repeat==='yearly' ? 365*3 : 90;
+    const hardCapDays = 365*3;
+    let horizonDays = defaultHorizon;
+    if(endDate){
+      const start0 = new Date(startDate+'T00:00:00');
+      const end0 = new Date(endDate+'T00:00:00');
+      const diff = Math.floor((end0-start0)/86400000)+1;
+      horizonDays = Math.max(1, Math.min(diff, hardCapDays));
+    }
+    const out = [];
+    const start = new Date(startDate+'T00:00:00');
+    for(let i=0;i<horizonDays;i++){
+      const d = new Date(start); d.setDate(d.getDate()+i);
+      const ds = fmtDate(d);
+      if(repeat==='daily') out.push(ds);
+      else if(repeat==='weekly' && d.getDay()===start.getDay()) out.push(ds);
+      else if(repeat==='monthly' && d.getDate()===start.getDate()) out.push(ds);
+      else if(repeat==='yearly' && d.getDate()===start.getDate() && d.getMonth()===start.getMonth()) out.push(ds);
+      else if(repeat==='custom' && weekdays && weekdays.includes(d.getDay())) out.push(ds);
+    }
+    return out.length ? out : [startDate];
+  }
+
+  window.cycleStatus = async function(t){
+    const order = ['todo','doing','done'];
+    const next = order[(order.indexOf(t.status)+1)%order.length];
+    const patch = {
+      status: next,
+      progress: next==='done'?100:(next==='doing'?50:0),
+      completedAt: next==='done' ? new Date().toISOString() : null
+    };
+    await updateTaskInDB(t.id || t.firestoreId, patch);
+    if(next==='done') maybeUpdateStreak();
+  }
+
+  function maybeUpdateStreak(){
+    const todaysTasks = tasks.filter(t=>t.date===todayStr());
+    const allDone = todaysTasks.length>0 && todaysTasks.every(t=>t.status==='done');
+    if(!allDone) return;
+    
+    let cur = streakInfo.current, longest = streakInfo.longest, last = streakInfo.lastCompletedDate;
+    if(last===todayStr()) return;
+    if(last===addDays(todayStr(),-1)) cur += 1; else cur = 1;
+    
+    longest = Math.max(longest, cur);
+    streakInfo = { current:cur, longest, lastCompletedDate: todayStr() };
+    saveStreak();
+    renderStats();
+    renderToday();
+  }
+
+  /* ---------------- templates ---------------- */
+  window.applyTemplate = async function(tpl, targetDate){
+    const toAdd = tpl.tasks.map(item => ({
+      id: generateId(), title:item.title, description:'', date: targetDate,
       startTime:item.startTime||'', endTime:item.endTime||'', status:'todo', progress:0,
       priority:item.priority||'medium', tag:item.tag||'study', color: tagById(item.tag||'study').color,
-      repeatType:'none', createdAt: serverTimestamp(), updatedAt: serverTimestamp(), completedAt:null, repeatGroupId:null
+      repeatType:'none', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), completedAt:null, repeatGroupId:null
+    }));
+    await createTasksInDB(toAdd);
+    toast('Template applied');
+  }
+
+  function saveTodayAsTemplate(){
+    const todays = tasks.filter(t=>t.date===todayStr());
+    if(!todays.length){ toast('Nothing to save yet'); return; }
+    const name = prompt(settings.lang==='zh' ? '模板名称：' : 'Template name:');
+    if(!name) return;
+    
+    templates.push({
+      id: generateId(), name, type:'custom',
+      tasks: todays.map(t=>({title:t.title, startTime:t.startTime, endTime:t.endTime, tag:t.tag, priority:t.priority}))
     });
-  }
-  toast('Template applied');
-}
-async function saveTodayAsTemplate(){
-  const todays = tasks.filter(t=>t.date===todayStr());
-  if(!todays.length){ toast('Nothing to save yet'); return; }
-  const name = prompt(settings.lang==='zh' ? '模板名称：' : 'Template name:');
-  if(!name) return;
-  await addDoc(collection(db,'templates'), {
-    userId: uid, name, type:'custom',
-    tasks: todays.map(t=>({title:t.title, startTime:t.startTime, endTime:t.endTime, tag:t.tag, priority:t.priority}))
-  });
-  toast('Saved');
-}
-const BUILT_IN_TEMPLATES = [
-  { id:'_workday', name:'Workday', nameZh:'工作日模板', tasks:[
-    {title:'Morning review', startTime:'08:00', endTime:'08:30', tag:'study', priority:'medium'},
-    {title:'Deep work block', startTime:'09:00', endTime:'11:30', tag:'work', priority:'high'},
-    {title:'Reading', startTime:'20:00', endTime:'20:45', tag:'reading', priority:'low'},
-  ]},
-  { id:'_weekend', name:'Weekend', nameZh:'周末模板', tasks:[
-    {title:'Exercise', startTime:'09:00', endTime:'10:00', tag:'fitness', priority:'medium'},
-    {title:'Catch-up study', startTime:'14:00', endTime:'16:00', tag:'study', priority:'medium'},
-  ]},
-  { id:'_exam', name:'Exam prep', nameZh:'考试模板', tasks:[
-    {title:'Practice set', startTime:'08:30', endTime:'10:30', tag:'study', priority:'high'},
-    {title:'Review mistakes', startTime:'11:00', endTime:'12:00', tag:'study', priority:'high'},
-    {title:'Mock test', startTime:'14:00', endTime:'16:00', tag:'study', priority:'high'},
-  ]},
-];
-
-/* ---------------- rendering: TODAY ---------------- */
-function renderToday(){
-  const today = todayStr();
-  const d = new Date();
-  document.getElementById('bigDate').textContent = d.toLocaleDateString(settings.lang==='zh'?'zh-CN':'en-US', {month:'short', day:'numeric'});
-  document.getElementById('bigWeekday').textContent = d.toLocaleDateString(settings.lang==='zh'?'zh-CN':'en-US', {weekday:'long', year:'numeric'});
-  const todays = tasks.filter(t=>t.date===today).sort((a,b)=>(a.startTime||'99').localeCompare(b.startTime||'99'));
-  const done = todays.filter(t=>t.status==='done').length;
-  document.getElementById('statDone').textContent = `${done}/${todays.length}`;
-  document.getElementById('statPct').textContent = todays.length ? Math.round(done/todays.length*100)+'%' : '0%';
-  document.getElementById('statStreak').textContent = '🔥'+(streakInfo.current||0);
-
-  const list = document.getElementById('taskList');
-  list.innerHTML = '';
-  if(!todays.length){
-    list.innerHTML = `<div class="empty"><span data-en>No tasks yet — add your first one.</span><span data-zh>还没有任务，添加第一个吧。</span></div>`;
-    applyLangVisibility(list);
-  } else {
-    todays.forEach(t=> list.appendChild(renderTaskRow(t)));
+    saveTemplates();
+    toast('Saved');
   }
 
-  const tl = document.getElementById('timeline');
-  tl.innerHTML = todays.filter(t=>t.startTime).map(t=>
-    `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--line);">
-      <span>${fmtTime(t.startTime)}${t.endTime?'–'+fmtTime(t.endTime):''}</span>
-      <span style="color:var(--ink-soft);">${escapeHtml(t.title)}</span>
-    </div>`).join('') || `<div class="empty" style="padding:8px 0;">—</div>`;
+  const BUILT_IN_TEMPLATES = [
+    { id:'_workday', name:'Workday', nameZh:'工作日模板', tasks:[
+      {title:'Morning review', startTime:'08:00', endTime:'08:30', tag:'study', priority:'medium'},
+      {title:'Deep work block', startTime:'09:00', endTime:'11:30', tag:'work', priority:'high'},
+      {title:'Reading', startTime:'20:00', endTime:'20:45', tag:'reading', priority:'low'},
+    ]},
+    { id:'_weekend', name:'Weekend', nameZh:'周末模板', tasks:[
+      {title:'Exercise', startTime:'09:00', endTime:'10:00', tag:'fitness', priority:'medium'},
+      {title:'Catch-up study', startTime:'14:00', endTime:'16:00', tag:'study', priority:'medium'},
+    ]},
+    { id:'_exam', name:'Exam prep', nameZh:'考试模板', tasks:[
+      {title:'Practice set', startTime:'08:30', endTime:'10:30', tag:'study', priority:'high'},
+      {title:'Review mistakes', startTime:'11:00', endTime:'12:00', tag:'study', priority:'high'},
+      {title:'Mock test', startTime:'14:00', endTime:'16:00', tag:'study', priority:'high'},
+    ]},
+  ];
 
-  const goalInput = document.getElementById('goalInput');
-  if(document.activeElement !== goalInput){
-    getDocs(query(collection(db,'dailyGoals'))).catch(()=>{});
+  /* ---------------- rendering: TODAY ---------------- */
+  function renderToday(){
+    const today = todayStr();
+    const d = new Date();
+    document.getElementById('bigDate').textContent = d.toLocaleDateString(settings.lang==='zh'?'zh-CN':'en-US', {month:'short', day:'numeric'});
+    document.getElementById('bigWeekday').textContent = d.toLocaleDateString(settings.lang==='zh'?'zh-CN':'en-US', {weekday:'long', year:'numeric'});
+    
+    const todays = tasks.filter(t=>t.date===today).sort((a,b)=>(a.startTime||'99').localeCompare(b.startTime||'99'));
+    const done = todays.filter(t=>t.status==='done').length;
+    
+    document.getElementById('statDone').textContent = `${done}/${todays.length}`;
+    document.getElementById('statPct').textContent = todays.length ? Math.round(done/todays.length*100)+'%' : '0%';
+    document.getElementById('statStreak').textContent = '🔥'+(streakInfo.current||0);
+
+    const list = document.getElementById('taskList');
+    list.innerHTML = '';
+    if(!todays.length){
+      list.innerHTML = `<div class="empty"><span data-en>No tasks yet — add your first one.</span><span data-zh>还没有任务，添加第一个吧。</span></div>`;
+    } else {
+      todays.forEach(t=> list.appendChild(renderTaskRow(t)));
+    }
+
+    const tl = document.getElementById('timeline');
+    tl.innerHTML = todays.filter(t=>t.startTime).map(t=>
+      `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--line);">
+        <span>${fmtTime(t.startTime)}${t.endTime?'–'+fmtTime(t.endTime):''}</span>
+        <span style="color:var(--ink-soft);">${escapeHtml(t.title)}</span>
+      </div>`).join('') || `<div class="empty" style="padding:8px 0;">—</div>`;
   }
-}
 
-function renderTaskRow(t){
-  const el = document.createElement('div');
-  el.className = 'task' + (t.status==='done' ? ' done' : '');
-  el.draggable = true;
-  el.dataset.id = t.id;
-  const tag = tagById(t.tag);
-  const glyph = t.status==='done' ? '☑' : (t.status==='doing' ? '◐' : '□');
-  el.innerHTML = `
-    <div class="chk ${t.status}" data-cycle="${t.id}">${glyph}</div>
-    <div class="task-main">
-      <div class="task-title">${escapeHtml(t.title)}</div>
-      <div class="task-meta">
-        ${t.startTime ? `<span>${fmtTime(t.startTime)}${t.endTime?'–'+fmtTime(t.endTime):''}</span>` : ''}
-        <span><span class="tag-dot" style="background:${tag.color}"></span>${settings.lang==='zh'?tag.nameZh:tag.name}</span>
-        <span>${priorityGlyph(t.priority)}</span>
-        ${t.repeatGroupId ? '<span>↻</span>' : ''}
+  function renderTaskRow(t){
+    const el = document.createElement('div');
+    el.className = 'task' + (t.status==='done' ? ' done' : '');
+    el.draggable = true;
+    el.dataset.id = t.id || t.firestoreId;
+    const tag = tagById(t.tag);
+    const glyph = t.status==='done' ? '☑' : (t.status==='doing' ? '◐' : '□');
+    el.innerHTML = `
+      <div class="chk ${t.status}" data-cycle="${t.id || t.firestoreId}">${glyph}</div>
+      <div class="task-main">
+        <div class="task-title">${escapeHtml(t.title)}</div>
+        <div class="task-meta">
+          ${t.startTime ? `<span>${fmtTime(t.startTime)}${t.endTime?'–'+fmtTime(t.endTime):''}</span>` : ''}
+          <span><span class="tag-dot" style="background:${tag.color}"></span>${settings.lang==='zh'?tag.nameZh:tag.name}</span>
+          <span>${priorityGlyph(t.priority)}</span>
+          ${t.repeatGroupId ? '<span>↻</span>' : ''}
+        </div>
       </div>
-    </div>
-    <button class="task-edit" data-edit="${t.id}">✎</button>
-  `;
-  return el;
-}
-function priorityGlyph(p){ return p==='high' ? '●●●' : p==='medium' ? '●●○' : '●○○'; }
-function escapeHtml(s){ return (s||'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-function applyLangVisibility(root){ /* CSS handles it via [data-en]/[data-zh]; nothing to do */ }
-
-document.getElementById('taskList').addEventListener('click', (e)=>{
-  const cycleId = e.target.closest('[data-cycle]')?.dataset.cycle;
-  const editId = e.target.closest('[data-edit]')?.dataset.edit;
-  if(cycleId){
-    const t = tasks.find(x=>x.id===cycleId);
-    e.target.closest('.chk').classList.add('pop');
-    cycleStatus(t);
-  } else if(editId){
-    openTaskModal(tasks.find(x=>x.id===editId));
+      <button class="task-edit" data-edit="${t.id || t.firestoreId}">✎</button>
+    `;
+    return el;
   }
-});
-// simple drag reorder (visual only, persists a manual "order" field)
-let dragId = null;
-document.getElementById('taskList').addEventListener('dragstart', e=>{ dragId = e.target.closest('.task')?.dataset.id; });
-document.getElementById('taskList').addEventListener('dragover', e=> e.preventDefault());
-document.getElementById('taskList').addEventListener('drop', e=>{
-  e.preventDefault();
-  const overEl = e.target.closest('.task');
-  if(!overEl || !dragId || overEl.dataset.id===dragId) return;
-  overEl.parentNode.insertBefore(document.querySelector(`.task[data-id="${dragId}"]`), overEl);
-});
+  function priorityGlyph(p){ return p==='high' ? '●●●' : p==='medium' ? '●●○' : '●○○'; }
+  function escapeHtml(s){ return (s||'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
-/* ---------------- calendar ---------------- */
-function renderCalendar(){
-  const y = calCursor.getFullYear(), m = calCursor.getMonth();
-  document.getElementById('calTitle').textContent = calCursor.toLocaleDateString(settings.lang==='zh'?'zh-CN':'en-US', {month:'long', year:'numeric'});
-  const dowNames = settings.lang==='zh' ? ['日','一','二','三','四','五','六'] : ['Su','Mo','Tu','We','Th','Fr','Sa'];
-  document.getElementById('calDow').innerHTML = dowNames.map(d=>`<div class="cal-dow">${d}</div>`).join('');
-
-  const firstDay = new Date(y,m,1);
-  const startOffset = firstDay.getDay();
-  const gridStart = new Date(y,m,1-startOffset);
-  const grid = document.getElementById('calGrid');
-  grid.innerHTML = '';
-  const todayS = todayStr();
-  for(let i=0;i<42;i++){
-    const d = new Date(gridStart); d.setDate(gridStart.getDate()+i);
-    const ds = fmtDate(d);
-    const dayTasks = tasks.filter(t=>t.date===ds);
-    const done = dayTasks.filter(t=>t.status==='done').length;
-    const pct = dayTasks.length ? Math.round(done/dayTasks.length*100) : 0;
-    const cell = document.createElement('div');
-    cell.className = 'cal-cell' + (d.getMonth()!==m?' other-month':'') + (ds===todayS?' today':'') + (ds===selectedCalDate?' selected':'');
-    cell.dataset.date = ds;
-    cell.innerHTML = `<div class="d">${d.getDate()}</div>
-      <div><div class="bar"><span style="width:${pct}%"></span></div><div class="cnt">${dayTasks.length ? dayTasks.length+(settings.lang==='zh'?' 项':' tasks') : ''}</div></div>`;
-    grid.appendChild(cell);
-  }
-  renderCalDayTasks();
-}
-document.getElementById('calGrid').addEventListener('click', e=>{
-  const cell = e.target.closest('.cal-cell'); if(!cell) return;
-  selectedCalDate = cell.dataset.date;
-  renderCalendar();
-});
-function renderCalDayTasks(){
-  const dayTasks = tasks.filter(t=>t.date===selectedCalDate).sort((a,b)=>(a.startTime||'99').localeCompare(b.startTime||'99'));
-  const d = new Date(selectedCalDate+'T00:00:00');
-  document.getElementById('calDaySelTitle').textContent = d.toLocaleDateString(settings.lang==='zh'?'zh-CN':'en-US',{weekday:'long',month:'long',day:'numeric'});
-  const wrap = document.getElementById('calDayTasks');
-  wrap.innerHTML = '';
-  if(!dayTasks.length){ wrap.innerHTML = `<div class="empty">${settings.lang==='zh'?'这天没有任务':'No tasks on this day'}</div>`; return; }
-  dayTasks.forEach(t=>wrap.appendChild(renderTaskRow(t)));
-}
-document.getElementById('calDayTasks').addEventListener('click', (e)=>{
-  const cycleId = e.target.closest('[data-cycle]')?.dataset.cycle;
-  const editId = e.target.closest('[data-edit]')?.dataset.edit;
-  if(cycleId){ cycleStatus(tasks.find(x=>x.id===cycleId)); }
-  else if(editId){ openTaskModal(tasks.find(x=>x.id===editId)); }
-});
-document.getElementById('calPrev').onclick = ()=>{ calCursor.setMonth(calCursor.getMonth()-1); renderCalendar(); };
-document.getElementById('calNext').onclick = ()=>{ calCursor.setMonth(calCursor.getMonth()+1); renderCalendar(); };
-
-/* ---------------- stats ---------------- */
-function pctFor(dateFrom, dateTo){
-  const set = tasks.filter(t=>t.date>=dateFrom && t.date<=dateTo);
-  if(!set.length) return 0;
-  return Math.round(set.filter(t=>t.status==='done').length/set.length*100);
-}
-function renderStats(){
-  const today = todayStr();
-  const weekStart = addDays(today, -(new Date().getDay()));
-  const monthStart = today.slice(0,8)+'01';
-  const yearStart = today.slice(0,5)+'01-01';
-  document.getElementById('s_today').textContent = pctFor(today,today)+'%';
-  document.getElementById('s_week').textContent = pctFor(weekStart,today)+'%';
-  document.getElementById('s_month').textContent = pctFor(monthStart,today)+'%';
-  document.getElementById('s_year').textContent = pctFor(yearStart,today)+'%';
-  document.getElementById('s_streak').textContent = streakInfo.current||0;
-  document.getElementById('s_longest').textContent = streakInfo.longest||0;
-
-  const bar = document.getElementById('barChart');
-  bar.innerHTML = '';
-  for(let i=13;i>=0;i--){
-    const ds = addDays(today, -i);
-    const p = pctFor(ds,ds);
-    const col = document.createElement('div');
-    col.className = 'col';
-    col.style.height = Math.max(p,3)+'%';
-    col.innerHTML = `<span>${p||''}</span>`;
-    col.title = ds;
-    bar.appendChild(col);
-  }
-
-  const cats = {};
-  tasks.forEach(t=>{ cats[t.tag] = cats[t.tag]||{total:0,done:0}; cats[t.tag].total++; if(t.status==='done') cats[t.tag].done++; });
-  const catEl = document.getElementById('catStats');
-  catEl.innerHTML = Object.keys(cats).map(tagId=>{
-    const tag = tagById(tagId); const c = cats[tagId];
-    return `<div class="cat-row"><span><span class="tag-dot" style="background:${tag.color}"></span>${settings.lang==='zh'?tag.nameZh:tag.name}</span><span class="mono">${c.done}/${c.total}</span></div>`;
-  }).join('') || `<div class="empty">${settings.lang==='zh'?'暂无数据':'No data yet'}</div>`;
-}
-document.getElementById('btnExport').onclick = ()=>{
-  const blob = new Blob([JSON.stringify(tasks,null,2)], {type:'application/json'});
-  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `studyos-export-${todayStr()}.json`; a.click();
-};
-
-/* ---------------- task modal ---------------- */
-function renderTagPicker(){
-  document.getElementById('tagPicker').innerHTML = settings.tags.map(t=>
-    `<div class="swatch ${t.id===selectedTag?'sel':''}" style="background:${t.color}" data-tag="${t.id}" title="${t.name}"></div>`).join('');
-}
-document.getElementById('tagPicker').addEventListener('click', e=>{
-  const id = e.target.dataset.tag; if(!id) return; selectedTag = id; renderTagPicker();
-});
-const weekdayLabels = {en:['S','M','T','W','T','F','S'], zh:['日','一','二','三','四','五','六']};
-function renderWeekdayPicker(){
-  const labels = weekdayLabels[settings.lang];
-  document.getElementById('weekdayPicker').innerHTML = labels.map((l,i)=>
-    `<div class="swatch" style="background:${selectedWeekdays.includes(i)?'var(--leaf)':'var(--line)'};color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;" data-wd="${i}">${l}</div>`).join('');
-}
-document.getElementById('weekdayPicker').addEventListener('click', e=>{
-  const wd = e.target.dataset.wd; if(wd===undefined) return;
-  const n = Number(wd);
-  selectedWeekdays = selectedWeekdays.includes(n) ? selectedWeekdays.filter(x=>x!==n) : [...selectedWeekdays, n];
-  renderWeekdayPicker();
-});
-document.getElementById('f_repeat').addEventListener('change', e=>{
-  document.getElementById('customWeekdaysWrap').classList.toggle('hidden', e.target.value!=='custom');
-  document.getElementById('repeatEndWrap').classList.toggle('hidden', e.target.value==='none');
-  if(e.target.value==='custom') renderWeekdayPicker();
-});
-
-function openTaskModal(existing){
-  editingTaskId = existing ? existing.id : null;
-  document.getElementById('taskModalTitle').textContent = existing ? (settings.lang==='zh'?'编辑任务':'Edit task') : (settings.lang==='zh'?'新建任务':'New task');
-  document.getElementById('f_title').value = existing?.title || '';
-  document.getElementById('f_notes').value = existing?.description || '';
-  document.getElementById('f_date').value = existing?.date || selectedCalDate || todayStr();
-  document.getElementById('f_priority').value = existing?.priority || 'medium';
-  document.getElementById('f_start').value = existing?.startTime || '';
-  document.getElementById('f_end').value = existing?.endTime || '';
-  document.getElementById('f_repeat').value = existing?.repeatType || 'none';
-  document.getElementById('customWeekdaysWrap').classList.toggle('hidden', (existing?.repeatType)!=='custom');
-  document.getElementById('repeatEndWrap').classList.toggle('hidden', !existing || (existing?.repeatType)==='none');
-  document.getElementById('f_repeatEnd').value = existing?.repeatEndDate || '';
-  selectedTag = existing?.tag || 'study';
-  selectedWeekdays = [];
-  renderTagPicker();
-  document.getElementById('btnDeleteTask').classList.toggle('hidden', !existing);
-  document.getElementById('taskOverlay').classList.add('open');
-}
-document.getElementById('btnNewTask').onclick = ()=> openTaskModal(null);
-document.getElementById('btnCancelTask').onclick = ()=> document.getElementById('taskOverlay').classList.remove('open');
-document.getElementById('btnSaveTask').onclick = async ()=>{
-  const title = document.getElementById('f_title').value.trim();
-  if(!title){ toast(settings.lang==='zh'?'请输入标题':'Title required'); return; }
-  const data = {
-    title, notes: document.getElementById('f_notes').value,
-    date: document.getElementById('f_date').value || todayStr(),
-    priority: document.getElementById('f_priority').value,
-    start: document.getElementById('f_start').value, end: document.getElementById('f_end').value,
-    tag: selectedTag, repeat: document.getElementById('f_repeat').value, weekdays: selectedWeekdays,
-    repeatEnd: document.getElementById('f_repeatEnd').value
-  };
-  if(editingTaskId){
-    await updateTask(editingTaskId, { title:data.title, description:data.notes, date:data.date, priority:data.priority, startTime:data.start, endTime:data.end, tag:data.tag, color: tagById(data.tag).color });
-  } else {
-    await createTask(data);
-  }
-  document.getElementById('taskOverlay').classList.remove('open');
-  toast(settings.lang==='zh'?'已保存':'Saved');
-};
-document.getElementById('btnDeleteTask').onclick = async ()=>{
-  if(!editingTaskId) return;
-  if(confirm(settings.lang==='zh'?'删除此任务？':'Delete this task?')){
-    await deleteTask(editingTaskId);
-    document.getElementById('taskOverlay').classList.remove('open');
-  }
-};
-
-/* ---------------- copy day ---------------- */
-document.getElementById('btnCopyYesterday').onclick = async ()=>{
-  await copyFromDate(addDays(todayStr(),-1), todayStr());
-};
-document.getElementById('btnCancelCopy').onclick = ()=> document.getElementById('copyOverlay').classList.remove('open');
-document.getElementById('btnDoCopy').onclick = async ()=>{
-  const from = document.getElementById('copyFromDate').value;
-  if(!from) return;
-  await copyFromDate(from, todayStr());
-  document.getElementById('copyOverlay').classList.remove('open');
-};
-async function copyFromDate(from, to){
-  const src = tasks.filter(t=>t.date===from);
-  if(!src.length){ toast(settings.lang==='zh'?'源日期没有任务':'No tasks on source date'); return; }
-  for(const t of src){
-    await addDoc(collection(db,'tasks'), {
-      userId: uid, title:t.title, description:t.description||'', date: to,
-      startTime:t.startTime||'', endTime:t.endTime||'', status:'todo', progress:0,
-      priority:t.priority, tag:t.tag, color:t.color, repeatType:'none',
-      createdAt: serverTimestamp(), updatedAt: serverTimestamp(), completedAt:null, repeatGroupId:null
-    });
-  }
-  toast(settings.lang==='zh'?'已复制':'Copied');
-}
-
-/* ---------------- templates modal ---------------- */
-document.getElementById('btnTemplates').onclick = ()=>{
-  renderTplList();
-  document.getElementById('tplOverlay').classList.add('open');
-};
-document.getElementById('btnCloseTpl').onclick = ()=> document.getElementById('tplOverlay').classList.remove('open');
-document.getElementById('btnSaveTodayAsTemplate').onclick = saveTodayAsTemplate;
-function renderTplList(){
-  const all = [...BUILT_IN_TEMPLATES, ...templates];
-  document.getElementById('tplList').innerHTML = all.map(t=>
-    `<div class="task"><div class="task-main"><div class="task-title">${settings.lang==='zh' && t.nameZh ? t.nameZh : t.name}</div>
-      <div class="task-meta">${t.tasks.length} ${settings.lang==='zh'?'项任务':'tasks'}</div></div>
-      <button class="pill-btn" data-apply-tpl="${t.id}">${settings.lang==='zh'?'应用到今天':'Apply to today'}</button></div>`).join('');
-}
-document.getElementById('tplList').addEventListener('click', e=>{
-  const id = e.target.dataset.applyTpl; if(!id) return;
-  const all = [...BUILT_IN_TEMPLATES, ...templates];
-  const tpl = all.find(t=>t.id===id);
-  applyTemplate(tpl, todayStr());
-  document.getElementById('tplOverlay').classList.remove('open');
-});
-
-/* ---------------- postpone ---------------- */
-document.getElementById('btnPostpone').onclick = async ()=>{
-  const unfinished = tasks.filter(t=>t.date===todayStr() && t.status!=='done');
-  if(!unfinished.length){ toast(settings.lang==='zh'?'没有未完成任务':'Nothing unfinished'); return; }
-  const tomorrow = addDays(todayStr(),1);
-  for(const t of unfinished){
-    await addDoc(collection(db,'tasks'), {
-      userId: uid, title:t.title, description:t.description||'', date: tomorrow,
-      startTime:t.startTime||'', endTime:t.endTime||'', status:'todo', progress:0,
-      priority:t.priority, tag:t.tag, color:t.color, repeatType:'none',
-      createdAt: serverTimestamp(), updatedAt: serverTimestamp(), completedAt:null, repeatGroupId:null
-    });
-    await deleteTask(t.id);
-  }
-  toast(settings.lang==='zh'?'已移动到明天':'Moved to tomorrow');
-};
-
-/* ---------------- settings interactions ---------------- */
-document.getElementById('swTheme').onclick = ()=>{ settings.theme = settings.theme==='dark'?'light':'dark'; applySettingsToUI(); saveSettings(); };
-['btnTheme','btnTheme2','btnTheme3'].forEach(id=> document.getElementById(id).onclick = ()=> document.getElementById('swTheme').onclick());
-document.getElementById('selLang').onchange = e=>{ settings.lang = e.target.value; applySettingsToUI(); saveSettings(); };
-['btnLang','btnLang2','btnLang3'].forEach(id=> document.getElementById(id).onclick = ()=>{ settings.lang = settings.lang==='en'?'zh':'en'; applySettingsToUI(); saveSettings(); });
-document.getElementById('selTimeFmt').onchange = e=>{ settings.timeFormat = e.target.value; applySettingsToUI(); saveSettings(); };
-document.getElementById('selHome').onchange = e=>{ settings.homePage = e.target.value; saveSettings(); };
-document.getElementById('swAuto').onclick = ()=>{ settings.autoPostpone = !settings.autoPostpone; applySettingsToUI(); saveSettings(); };
-document.getElementById('swReminders').onclick = async ()=>{
-  if(!settings.reminders && Notification && Notification.permission!=='granted'){
-    const perm = await Notification.requestPermission();
-    if(perm!=='granted'){ toast('Permission denied'); return; }
-  }
-  settings.reminders = !settings.reminders; applySettingsToUI(); saveSettings();
-};
-function renderTagSettings(){
-  document.getElementById('tagListSettings').innerHTML = settings.tags.map(t=>
-    `<div class="set-row"><span><span class="tag-dot" style="background:${t.color}"></span>${settings.lang==='zh'?t.nameZh:t.name}</span>
-      <button class="task-edit" data-del-tag="${t.id}">✕</button></div>`).join('');
-}
-document.getElementById('tagListSettings').addEventListener('click', e=>{
-  const id = e.target.dataset.delTag; if(!id) return;
-  settings.tags = settings.tags.filter(t=>t.id!==id);
-  applySettingsToUI(); saveSettings();
-});
-document.getElementById('btnAddTag').onclick = ()=>{
-  const name = document.getElementById('newTagName').value.trim();
-  if(!name) return;
-  const color = document.getElementById('newTagColor').value;
-  settings.tags.push({ id:'tag_'+Date.now(), name, nameZh:name, color });
-  document.getElementById('newTagName').value = '';
-  applySettingsToUI(); saveSettings();
-};
-
-/* ---------------- reminders (in-page, while open) ---------------- */
-setInterval(()=>{
-  if(!settings.reminders) return;
-  const now = new Date();
-  const hhmm = String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0');
-  tasks.filter(t=>t.date===todayStr() && t.status!=='done' && t.startTime===hhmm).forEach(t=>{
-    new Notification(settings.lang==='zh'?'该开始了':'Time to start', { body:t.title });
+  document.getElementById('taskList').addEventListener('click', (e)=>{
+    const cycleId = e.target.closest('[data-cycle]')?.dataset.cycle;
+    const editId = e.target.closest('[data-edit]')?.dataset.edit;
+    if(cycleId){
+      const t = tasks.find(x=>(x.id===cycleId || x.firestoreId===cycleId));
+      e.target.closest('.chk').classList.add('pop');
+      cycleStatus(t);
+    } else if(editId){
+      openTaskModal(tasks.find(x=>(x.id===editId || x.firestoreId===editId)));
+    }
   });
-}, 60000);
 
-/* ---------------- nav ---------------- */
-document.querySelectorAll('.rail-btn').forEach(btn=>{
-  btn.onclick = ()=>{
-    document.querySelectorAll('.rail-btn').forEach(b=>b.classList.remove('active'));
-    btn.classList.add('active');
-    document.querySelectorAll('main > section').forEach(s=>s.classList.add('hidden'));
-    document.getElementById('view-'+btn.dataset.view).classList.remove('hidden');
-    if(btn.dataset.view==='calendar') renderCalendar();
-    if(btn.dataset.view==='stats') renderStats();
+  let dragId = null;
+  document.getElementById('taskList').addEventListener('dragstart', e=>{ dragId = e.target.closest('.task')?.dataset.id; });
+  document.getElementById('taskList').addEventListener('dragover', e=> e.preventDefault());
+  document.getElementById('taskList').addEventListener('drop', e=>{
+    e.preventDefault();
+    const overEl = e.target.closest('.task');
+    if(!overEl || !dragId || overEl.dataset.id===dragId) return;
+    overEl.parentNode.insertBefore(document.querySelector(`.task[data-id="${dragId}"]`), overEl);
+  });
+
+  /* ---------------- calendar ---------------- */
+  function renderCalendar(){
+    const y = calCursor.getFullYear(), m = calCursor.getMonth();
+    document.getElementById('calTitle').textContent = calCursor.toLocaleDateString(settings.lang==='zh'?'zh-CN':'en-US', {month:'long', year:'numeric'});
+    const dowNames = settings.lang==='zh' ? ['日','一','二','三','四','五','六'] : ['Su','Mo','Tu','We','Th','Fr','Sa'];
+    document.getElementById('calDow').innerHTML = dowNames.map(d=>`<div class="cal-dow">${d}</div>`).join('');
+
+    const firstDay = new Date(y,m,1);
+    const startOffset = firstDay.getDay();
+    const gridStart = new Date(y,m,1-startOffset);
+    const grid = document.getElementById('calGrid');
+    grid.innerHTML = '';
+    const todayS = todayStr();
+    
+    for(let i=0;i<42;i++){
+      const d = new Date(gridStart); d.setDate(gridStart.getDate()+i);
+      const ds = fmtDate(d);
+      const dayTasks = tasks.filter(t=>t.date===ds);
+      const done = dayTasks.filter(t=>t.status==='done').length;
+      const pct = dayTasks.length ? Math.round(done/dayTasks.length*100) : 0;
+      const cell = document.createElement('div');
+      cell.className = 'cal-cell' + (d.getMonth()!==m?' other-month':'') + (ds===todayS?' today':'') + (ds===selectedCalDate?' selected':'');
+      cell.dataset.date = ds;
+      cell.innerHTML = `<div class="d">${d.getDate()}</div>
+        <div><div class="bar"><span style="width:${pct}%"></span></div><div class="cnt">${dayTasks.length ? dayTasks.length+(settings.lang==='zh'?' 项':' tasks') : ''}</div></div>`;
+      grid.appendChild(cell);
+    }
+    renderCalDayTasks();
+  }
+  document.getElementById('calGrid').addEventListener('click', e=>{
+    const cell = e.target.closest('.cal-cell'); if(!cell) return;
+    selectedCalDate = cell.dataset.date;
+    renderCalendar();
+  });
+  function renderCalDayTasks(){
+    const dayTasks = tasks.filter(t=>t.date===selectedCalDate).sort((a,b)=>(a.startTime||'99').localeCompare(b.startTime||'99'));
+    const d = new Date(selectedCalDate+'T00:00:00');
+    document.getElementById('calDaySelTitle').textContent = d.toLocaleDateString(settings.lang==='zh'?'zh-CN':'en-US',{weekday:'long',month:'long',day:'numeric'});
+    const wrap = document.getElementById('calDayTasks');
+    wrap.innerHTML = '';
+    if(!dayTasks.length){ wrap.innerHTML = `<div class="empty">${settings.lang==='zh'?'这天没有任务':'No tasks on this day'}</div>`; return; }
+    dayTasks.forEach(t=>wrap.appendChild(renderTaskRow(t)));
+  }
+  document.getElementById('calDayTasks').addEventListener('click', (e)=>{
+    const cycleId = e.target.closest('[data-cycle]')?.dataset.cycle;
+    const editId = e.target.closest('[data-edit]')?.dataset.edit;
+    if(cycleId){ cycleStatus(tasks.find(x=>(x.id===cycleId || x.firestoreId===cycleId))); }
+    else if(editId){ openTaskModal(tasks.find(x=>(x.id===editId || x.firestoreId===editId))); }
+  });
+  document.getElementById('calPrev').onclick = ()=>{ calCursor.setMonth(calCursor.getMonth()-1); renderCalendar(); };
+  document.getElementById('calNext').onclick = ()=>{ calCursor.setMonth(calCursor.getMonth()+1); renderCalendar(); };
+
+  /* ---------------- stats ---------------- */
+  function pctFor(dateFrom, dateTo){
+    const set = tasks.filter(t=>t.date>=dateFrom && t.date<=dateTo);
+    if(!set.length) return 0;
+    return Math.round(set.filter(t=>t.status==='done').length/set.length*100);
+  }
+  function renderStats(){
+    const today = todayStr();
+    const weekStart = addDays(today, -(new Date().getDay()));
+    const monthStart = today.slice(0,8)+'01';
+    const yearStart = today.slice(0,5)+'01-01';
+    
+    document.getElementById('s_today').textContent = pctFor(today,today)+'%';
+    document.getElementById('s_week').textContent = pctFor(weekStart,today)+'%';
+    document.getElementById('s_month').textContent = pctFor(monthStart,today)+'%';
+    document.getElementById('s_year').textContent = pctFor(yearStart,today)+'%';
+    document.getElementById('s_streak').textContent = streakInfo.current||0;
+    document.getElementById('s_longest').textContent = streakInfo.longest||0;
+
+    const bar = document.getElementById('barChart');
+    bar.innerHTML = '';
+    for(let i=13;i>=0;i--){
+      const ds = addDays(today, -i);
+      const p = pctFor(ds,ds);
+      const col = document.createElement('div');
+      col.className = 'col';
+      col.style.height = Math.max(p,3)+'%';
+      col.innerHTML = `<span>${p||''}</span>`;
+      col.title = ds;
+      bar.appendChild(col);
+    }
+
+    const cats = {};
+    tasks.forEach(t=>{ cats[t.tag] = cats[t.tag]||{total:0,done:0}; cats[t.tag].total++; if(t.status==='done') cats[t.tag].done++; });
+    const catEl = document.getElementById('catStats');
+    catEl.innerHTML = Object.keys(cats).map(tagId=>{
+      const tag = tagById(tagId); const c = cats[tagId];
+      return `<div class="cat-row"><span><span class="tag-dot" style="background:${tag.color}"></span>${settings.lang==='zh'?tag.nameZh:tag.name}</span><span class="mono">${c.done}/${c.total}</span></div>`;
+    }).join('') || `<div class="empty">${settings.lang==='zh'?'暂无数据':'No data yet'}</div>`;
+  }
+  document.getElementById('btnExport').onclick = ()=>{
+    const blob = new Blob([JSON.stringify(tasks,null,2)], {type:'application/json'});
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `studyos-export-${todayStr()}.json`; a.click();
   };
-});
 
-function renderAll(){ renderToday(); renderCalendar(); renderStats(); }
+  /* ---------------- task modal ---------------- */
+  function renderTagPicker(){
+    document.getElementById('tagPicker').innerHTML = settings.tags.map(t=>
+      `<div class="swatch ${t.id===selectedTag?'sel':''}" style="background:${t.color}" data-tag="${t.id}" title="${t.name}"></div>`).join('');
+  }
+  document.getElementById('tagPicker').addEventListener('click', e=>{
+    const id = e.target.dataset.tag; if(!id) return; selectedTag = id; renderTagPicker();
+  });
+  const weekdayLabels = {en:['S','M','T','W','T','F','S'], zh:['日','一','二','三','四','五','六']};
+  function renderWeekdayPicker(){
+    const labels = weekdayLabels[settings.lang];
+    document.getElementById('weekdayPicker').innerHTML = labels.map((l,i)=>
+      `<div class="swatch" style="background:${selectedWeekdays.includes(i)?'var(--leaf)':'var(--line)'};color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;" data-wd="${i}">${l}</div>`).join('');
+  }
+  document.getElementById('weekdayPicker').addEventListener('click', e=>{
+    const wd = e.target.dataset.wd; if(wd===undefined) return;
+    const n = Number(wd);
+    selectedWeekdays = selectedWeekdays.includes(n) ? selectedWeekdays.filter(x=>x!==n) : [...selectedWeekdays, n];
+    renderWeekdayPicker();
+  });
+  document.getElementById('f_repeat').addEventListener('change', e=>{
+    document.getElementById('customWeekdaysWrap').classList.toggle('hidden', e.target.value!=='custom');
+    document.getElementById('repeatEndWrap').classList.toggle('hidden', e.target.value==='none');
+    if(e.target.value==='custom') renderWeekdayPicker();
+  });
+
+  function openTaskModal(existing){
+    editingTaskId = existing ? (existing.id || existing.firestoreId) : null;
+    document.getElementById('taskModalTitle').textContent = existing ? (settings.lang==='zh'?'编辑任务':'Edit task') : (settings.lang==='zh'?'新建任务':'New task');
+    document.getElementById('f_title').value = existing?.title || '';
+    document.getElementById('f_notes').value = existing?.description || '';
+    document.getElementById('f_date').value = existing?.date || selectedCalDate || todayStr();
+    document.getElementById('f_priority').value = existing?.priority || 'medium';
+    document.getElementById('f_start').value = existing?.startTime || '';
+    document.getElementById('f_end').value = existing?.endTime || '';
+    document.getElementById('f_repeat').value = existing?.repeatType || 'none';
+    document.getElementById('customWeekdaysWrap').classList.toggle('hidden', (existing?.repeatType)!=='custom');
+    document.getElementById('repeatEndWrap').classList.toggle('hidden', !existing || (existing?.repeatType)==='none');
+    document.getElementById('f_repeatEnd').value = existing?.repeatEndDate || '';
+    selectedTag = existing?.tag || 'study';
+    selectedWeekdays = [];
+    renderTagPicker();
+    document.getElementById('btnDeleteTask').classList.toggle('hidden', !existing);
+    document.getElementById('taskOverlay').classList.add('open');
+  }
+  document.getElementById('btnNewTask').onclick = ()=> openTaskModal(null);
+  document.getElementById('btnCancelTask').onclick = ()=> document.getElementById('taskOverlay').classList.remove('open');
+  document.getElementById('btnSaveTask').onclick = async ()=>{
+    const title = document.getElementById('f_title').value.trim();
+    if(!title){ toast(settings.lang==='zh'?'请输入标题':'Title required'); return; }
+    const data = {
+      title, notes: document.getElementById('f_notes').value,
+      date: document.getElementById('f_date').value || todayStr(),
+      priority: document.getElementById('f_priority').value,
+      start: document.getElementById('f_start').value, end: document.getElementById('f_end').value,
+      tag: selectedTag, repeat: document.getElementById('f_repeat').value, weekdays: selectedWeekdays,
+      repeatEnd: document.getElementById('f_repeatEnd').value
+    };
+    if(editingTaskId){
+      await updateTaskInDB(editingTaskId, { 
+        title:data.title, description:data.notes, date:data.date, 
+        priority:data.priority, startTime:data.start, endTime:data.end, 
+        tag:data.tag, color: tagById(data.tag).color 
+      });
+    } else {
+      await createTask(data);
+    }
+    document.getElementById('taskOverlay').classList.remove('open');
+  };
+  document.getElementById('btnDeleteTask').onclick = async ()=>{
+    if(!editingTaskId) return;
+    if(confirm(settings.lang==='zh'?'删除此任务？':'Delete this task?')){
+      await deleteTaskFromDB(editingTaskId);
+      document.getElementById('taskOverlay').classList.remove('open');
+    }
+  };
+
+  /* ---------------- copy day ---------------- */
+  document.getElementById('btnCopyYesterday').onclick = ()=>{
+    copyFromDate(addDays(todayStr(),-1), todayStr());
+  };
+  document.getElementById('btnCancelCopy').onclick = ()=> document.getElementById('copyOverlay').classList.remove('open');
+  document.getElementById('btnDoCopy').onclick = ()=>{
+    const from = document.getElementById('copyFromDate').value;
+    if(!from) return;
+    copyFromDate(from, todayStr());
+    document.getElementById('copyOverlay').classList.remove('open');
+  };
+  async function copyFromDate(from, to){
+    const src = tasks.filter(t=>t.date===from);
+    if(!src.length){ toast(settings.lang==='zh'?'源日期没有任务':'No tasks on source date'); return; }
+    const toAdd = src.map(t=>({
+      id: generateId(), title:t.title, description:t.description||'', date: to,
+      startTime:t.startTime||'', endTime:t.endTime||'', status:'todo', progress:0,
+      priority:t.priority, tag:t.tag, color:t.color, repeatType:'none',
+      createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), completedAt:null, repeatGroupId:null
+    }));
+    await createTasksInDB(toAdd);
+  }
+
+  /* ---------------- templates modal ---------------- */
+  document.getElementById('btnTemplates').onclick = ()=>{
+    renderTplList();
+    document.getElementById('tplOverlay').classList.add('open');
+  };
+  document.getElementById('btnCloseTpl').onclick = ()=> document.getElementById('tplOverlay').classList.remove('open');
+  document.getElementById('btnSaveTodayAsTemplate').onclick = saveTodayAsTemplate;
+  function renderTplList(){
+    const all = [...BUILT_IN_TEMPLATES, ...templates];
+    document.getElementById('tplList').innerHTML = all.map(t=>
+      `<div class="task"><div class="task-main"><div class="task-title">${settings.lang==='zh' && t.nameZh ? t.nameZh : t.name}</div>
+        <div class="task-meta">${t.tasks.length} ${settings.lang==='zh'?'项任务':'tasks'}</div></div>
+        <button class="pill-btn" data-apply-tpl="${t.id}">${settings.lang==='zh'?'应用到今天':'Apply to today'}</button></div>`).join('');
+  }
+  document.getElementById('tplList').addEventListener('click', e=>{
+    const id = e.target.dataset.applyTpl; if(!id) return;
+    const all = [...BUILT_IN_TEMPLATES, ...templates];
+    const tpl = all.find(t=>t.id===id);
+    applyTemplate(tpl, todayStr());
+    document.getElementById('tplOverlay').classList.remove('open');
+  });
+
+  /* ---------------- postpone ---------------- */
+  document.getElementById('btnPostpone').onclick = async ()=>{
+    const unfinished = tasks.filter(t=>t.date===todayStr() && t.status!=='done');
+    if(!unfinished.length){ toast(settings.lang==='zh'?'没有未完成任务':'Nothing unfinished'); return; }
+    const tomorrow = addDays(todayStr(),1);
+    for(const t of unfinished){
+      await updateTaskInDB(t.id || t.firestoreId, { date: tomorrow });
+    }
+    toast(settings.lang==='zh'?'已移动到明天':'Moved to tomorrow');
+  };
+
+  /* ---------------- settings interactions ---------------- */
+  document.getElementById('swTheme').onclick = ()=>{ settings.theme = settings.theme==='dark'?'light':'dark'; saveSettings(); };
+  ['btnTheme','btnTheme2','btnTheme3'].forEach(id=> document.getElementById(id).onclick = ()=> document.getElementById('swTheme').onclick());
+  document.getElementById('selLang').onchange = e=>{ settings.lang = e.target.value; saveSettings(); };
+  ['btnLang','btnLang2','btnLang3'].forEach(id=> document.getElementById(id).onclick = ()=>{ settings.lang = settings.lang==='en'?'zh':'en'; saveSettings(); });
+  document.getElementById('selTimeFmt').onchange = e=>{ settings.timeFormat = e.target.value; saveSettings(); };
+  document.getElementById('selHome').onchange = e=>{ settings.homePage = e.target.value; saveSettings(); };
+  document.getElementById('swAuto').onclick = ()=>{ settings.autoPostpone = !settings.autoPostpone; saveSettings(); };
+  document.getElementById('swReminders').onclick = async ()=>{
+    if(!settings.reminders && Notification && Notification.permission!=='granted'){
+      const perm = await Notification.requestPermission();
+      if(perm!=='granted'){ toast('Permission denied'); return; }
+    }
+    settings.reminders = !settings.reminders; saveSettings();
+  };
+  function renderTagSettings(){
+    document.getElementById('tagListSettings').innerHTML = settings.tags.map(t=>
+      `<div class="set-row"><span><span class="tag-dot" style="background:${t.color}"></span>${settings.lang==='zh'?t.nameZh:t.name}</span>
+        <button class="task-edit" data-del-tag="${t.id}">✕</button></div>`).join('');
+  }
+  document.getElementById('tagListSettings').addEventListener('click', e=>{
+    const id = e.target.dataset.delTag; if(!id) return;
+    settings.tags = settings.tags.filter(t=>t.id!==id);
+    saveSettings();
+  });
+  document.getElementById('btnAddTag').onclick = ()=>{
+    const name = document.getElementById('newTagName').value.trim();
+    if(!name) return;
+    const color = document.getElementById('newTagColor').value;
+    settings.tags.push({ id:'tag_'+Date.now(), name, nameZh:name, color });
+    document.getElementById('newTagName').value = '';
+    saveSettings();
+  };
+
+  /* ---------------- reminders ---------------- */
+  setInterval(()=>{
+    if(!settings.reminders) return;
+    const now = new Date();
+    const hhmm = String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0');
+    tasks.filter(t=>t.date===todayStr() && t.status!=='done' && t.startTime===hhmm).forEach(t=>{
+      new Notification(settings.lang==='zh'?'该开始了':'Time to start', { body:t.title });
+    });
+  }, 60000);
+
+  /* ---------------- nav ---------------- */
+  document.querySelectorAll('.rail-btn').forEach(btn=>{
+    btn.onclick = ()=>{
+      document.querySelectorAll('.rail-btn').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      document.querySelectorAll('main > section').forEach(s=>s.classList.add('hidden'));
+      document.getElementById('view-'+btn.dataset.view).classList.remove('hidden');
+      if(btn.dataset.view==='calendar') renderCalendar();
+      if(btn.dataset.view==='stats') renderStats();
+    };
+  });
+
+  function renderAll(){ renderToday(); renderCalendar(); renderStats(); }
+
+  /* ---------------- Initialization ---------------- */
+  function initApp() {
+    const savedSettings = localStorage.getItem('studyos_settings');
+    if (savedSettings) settings = { ...settings, ...JSON.parse(savedSettings) };
+    if(!settings.tags || !settings.tags.length) settings.tags = defaultTags();
+
+    const savedTpls = localStorage.getItem('studyos_templates');
+    if (savedTpls) templates = JSON.parse(savedTpls);
+
+    const savedStreak = localStorage.getItem('studyos_streak');
+    if (savedStreak) streakInfo = JSON.parse(savedStreak);
+
+    applySettingsToUI();
+    fetchTasksFromDB(); // 启动时从 Firestore 读取任务数据
+  }
+
+  initApp();
 </script>
 </body>
 </html>
