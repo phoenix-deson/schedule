@@ -31,12 +31,14 @@ const {
   DEEPSEEK_API_KEY,
   SMTP_USER,
   SMTP_PASS,
-  RECIPIENT_EMAIL = "1336487767@qq.com",
-  SMTP_HOST = "smtp.gmail.com",
-  SMTP_PORT = "465",
-  SMTP_SECURE = "true",
   TARGET_UID = "",
 } = process.env;
+
+// 使用 || 确保在 GitHub Actions 传入空字符串 "" 时，能正确回退到默认值
+const SMTP_HOST = process.env.SMTP_HOST || "smtp.gmail.com";
+const SMTP_PORT = process.env.SMTP_PORT || "465";
+const SMTP_SECURE = process.env.SMTP_SECURE || "true";
+const RECIPIENT_EMAIL = process.env.RECIPIENT_EMAIL || "1336487767@qq.com";
 
 function requireEnv(name, val) {
   if (!val) {
