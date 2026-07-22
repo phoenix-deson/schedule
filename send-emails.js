@@ -1,85 +1,57 @@
-/**
- * send-emails.js
- * Runs on a GitHub Actions schedule (or manually via workflow_dispatch).
- * 1. Reads today's + last 7 days' tasks from Firestore (Admin SDK).
- * 2. Sends that data to DeepSeek to write a short, encouraging English email
- *    that reviews progress and motivates the recipient.
- * 3. Emails it via SMTP (nodemailer).
- *
- * Required GitHub Actions secrets:
- *   FIREBASE_SERVICE_ACCOUNT  - full JSON of a Firebase service account key
- *   DEEPSEEK_API_KEY          - DeepSeek API key (rotate the one pasted in chat!)
- *   SMTP_USER                 - SMTP login / from-address
- *   SMTP_PASS                 - SMTP password / app password
- *
- * Optional secrets or repo variables (all have defaults below):
- *   RECIPIENT_EMAIL  (default: 1336487767@qq.com — the test inbox from the PRD)
- *   SMTP_HOST        (default: smtp.gmail.com)
- *   SMTP_PORT        (default: 465)
- *   SMTP_SECURE      (default: true)
- *   TARGET_UID       (optional — if set, only that user's tasks are used;
- *                     otherwise the script uses whichever uid owns today's tasks,
- *                     which is fine for a single-user deployment)
- */
-
 import admin from "firebase-admin";
 import nodemailer from "nodemailer";
 
-/* ---------- env / config ---------- */
-const {
-  FIREBASE_SERVICE_ACCOUNT,
-  DEEPSEEK_API_KEY,
-  SMTP_USER,
-  SMTP_PASS,
-  TARGET_UID = "",
-} = process.env;
+/* ---------- 1. 环境变量与容错处理 ---------- */
+const env = process.env;
 
-// 使用 || 确保在 GitHub Actions 传入空字符串 "" 时，能正确回退到默认值
-const SMTP_HOST = process.env.SMTP_HOST || "smtp.gmail.com";
-const SMTP_PORT = process.env.SMTP_PORT || "465";
-const SMTP_SECURE = process.env.SMTP_SECURE || "true";
-const RECIPIENT_EMAIL = process.env.RECIPIENT_EMAIL || "1336487767@qq.com";
+// 必须配置的 Secrets 检查
+const FIREBASE_SERVICE_ACCOUNT = env.FIREBASE_SERVICE_ACCOUNT;
+const DEEPSEEK_API_KEY = env.DEEPSEEK_API_KEY;
+const SMTP_USER = env.SMTP_USER;
+const SMTP_PASS = env.SMTP_PASS;
 
-function requireEnv(name, val) {
-  if (!val) {
-    console.error(`Missing required secret/env var: ${name}`);
-    process.exit(1);
-  }
+if (!FIREBASE_SERVICE_ACCOUNT || !DEEPSEEK_API_KEY || !SMTP_USER || !SMTP_PASS) {
+  console.error("❌ 缺少必要的 Secret 环境变量 (FIREBASE_SERVICE_ACCOUNT, DEEPSEEK_API_KEY, SMTP_USER, SMTP_PASS)");
+  process.exit(1);
 }
-requireEnv("FIREBASE_SERVICE_ACCOUNT", FIREBASE_SERVICE_ACCOUNT);
-requireEnv("DEEPSEEK_API_KEY", DEEPSEEK_API_KEY);
-requireEnv("SMTP_USER", SMTP_USER);
-requireEnv("SMTP_PASS", SMTP_PASS);
 
-/* ---------- firebase admin init ---------- */
-const serviceAccount = JSON.parse(FIREBASE_SERVICE_ACCOUNT);
-admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
+// 使用 || 确保在变量为空字符串 "" 时，能正确回退到默认值
+const SMTP_HOST = env.SMTP_HOST || "smtp.gmail.com"; 
+const SMTP_PORT = Number(env.SMTP_PORT || 465);
+const SMTP_SECURE = (env.SMTP_SECURE || "true") === "true";
+const RECIPIENT_EMAIL = env.RECIPIENT_EMAIL || "1336487767@qq.com";
+const TARGET_UID = env.TARGET_UID || "";
+
+/* ---------- 2. 初始化 Firebase Admin ---------- */
+admin.initializeApp({
+  credential: admin.credential.cert(JSON.parse(FIREBASE_SERVICE_ACCOUNT)),
+});
 const db = admin.firestore();
 
-/* ---------- date helpers ---------- */
-function fmtDate(d) {
-  const y = d.getFullYear(), m = String(d.getMonth() + 1).padStart(2, "0"), day = String(d.getDate()).padStart(2, "0");
+/* ---------- 3. 日期辅助 ---------- */
+function getFormattedDate(offsetDays = 0) {
+  const d = new Date();
+  d.setDate(d.getDate() + offsetDays);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
 }
-function addDays(dateStr, n) {
-  const d = new Date(dateStr + "T00:00:00");
-  d.setDate(d.getDate() + n);
-  return fmtDate(d);
-}
-const today = fmtDate(new Date());
-const weekAgo = addDays(today, -6);
 
-/* ---------- fetch data ---------- */
+const today = getFormattedDate(0);
+const weekAgo = getFormattedDate(-6);
+
+/* ---------- 4. 获取 Firestore 数据 ---------- */
 async function fetchData() {
   let uid = TARGET_UID;
 
-  // If no explicit uid, infer it from whoever has tasks today (single-user friendly).
+  // 获取今天的任务
   const todaySnap = await db.collection("tasks").where("date", "==", today).get();
-  if (!uid) {
-    const first = todaySnap.docs[0];
-    uid = first ? first.data().userId : null;
+  if (!uid && !todaySnap.empty) {
+    uid = todaySnap.docs[0].data().userId;
   }
 
+  // 获取最近 7 天任务
   const weekSnap = await db
     .collection("tasks")
     .where("date", ">=", weekAgo)
@@ -91,57 +63,32 @@ async function fetchData() {
 
   const todayTasks = allTasks.filter((t) => t.date === today);
 
+  // 获取连续天数
   let streak = { current: 0, longest: 0 };
   if (uid) {
     const streakDoc = await db.collection("streaks").doc(uid).get();
     if (streakDoc.exists) streak = streakDoc.data();
   }
 
-  // Rough per-day completion for the week, for trend context.
-  const byDay = {};
-  for (let i = 0; i < 7; i++) {
-    const d = addDays(weekAgo, i);
-    const dayTasks = allTasks.filter((t) => t.date === d);
-    byDay[d] = {
-      total: dayTasks.length,
-      done: dayTasks.filter((t) => t.status === "done").length,
-    };
-  }
-
-  return { uid, todayTasks, byDay, streak };
+  return { todayTasks, streak };
 }
 
-/* ---------- DeepSeek ---------- */
-async function generateEmail({ todayTasks, byDay, streak }) {
-  const doneToday = todayTasks.filter((t) => t.status === "done").length;
-  const totalToday = todayTasks.length;
-  const pctToday = totalToday ? Math.round((doneToday / totalToday) * 100) : null;
+/* ---------- 5. 调用 DeepSeek 生成文案 ---------- */
+async function generateEmailText({ todayTasks, streak }) {
+  const doneCount = todayTasks.filter((t) => t.status === "done").length;
+  const totalCount = todayTasks.length;
 
-  const weekSummary = Object.entries(byDay)
-    .map(([d, v]) => `${d}: ${v.done}/${v.total} completed`)
-    .join("\n");
+  const taskListText = todayTasks
+    .map((t) => `- [${t.status}] ${t.title}`)
+    .join("\n") || "(No tasks logged today)";
 
-  const taskLines = todayTasks
-    .map((t) => `- [${t.status}] ${t.title}${t.tag ? ` (${t.tag})` : ""}`)
-    .join("\n") || "(no tasks logged for today)";
-
-  const prompt = `You are writing a short daily study-progress email to a student, on behalf of their "Super Study Calendar" app.
-
+  const prompt = `You are writing a short daily study-progress email to a student on behalf of "Super Study Calendar".
 Data for today (${today}):
-${taskLines}
-Today's completion: ${totalToday ? `${doneToday}/${totalToday} (${pctToday}%)` : "no tasks logged"}
-Current streak: ${streak.current || 0} day(s), longest streak: ${streak.longest || 0} day(s)
+${taskListText}
+Completion: ${doneCount}/${totalCount} tasks completed.
+Current streak: ${streak.current || 0} day(s).
 
-Completion over the last 7 days:
-${weekSummary}
-
-Write the email in English, plain text (no markdown symbols like # or **). Structure:
-1. A warm, genuine, specific greeting and one encouraging line (not generic hype — reference something real from the data).
-2. A short, honest analysis of today's progress and the weekly trend (2-4 sentences).
-3. One concrete, kind suggestion for tomorrow.
-4. A brief sign-off from "Your Super Study Calendar".
-
-Keep the whole email under 180 words. Do not invent tasks or numbers that weren't given.`;
+Write a warm, concise English email (under 150 words) with plain text (no markdown like # or **). Include a greeting, progress review, and a small encouragement for tomorrow.`;
 
   const resp = await fetch("https://api.deepseek.com/chat/completions", {
     method: "POST",
@@ -153,59 +100,53 @@ Keep the whole email under 180 words. Do not invent tasks or numbers that weren'
       model: "deepseek-chat",
       messages: [{ role: "user", content: prompt }],
       temperature: 0.7,
-      max_tokens: 500,
     }),
   });
 
   if (!resp.ok) {
-    const errText = await resp.text();
-    throw new Error(`DeepSeek API error ${resp.status}: ${errText}`);
+    throw new Error(`DeepSeek API error ${resp.status}: ${await resp.text()}`);
   }
+
   const json = await resp.json();
   const text = json.choices?.[0]?.message?.content?.trim();
-  if (!text) throw new Error("DeepSeek returned no content");
-  return { text, pctToday, doneToday, totalToday };
+  return { text: text || "Keep up the good work!", doneCount, totalCount };
 }
 
-/* ---------- email send ---------- */
-async function sendEmail(bodyText, subjectMeta) {
+/* ---------- 6. 发送邮件 ---------- */
+async function sendEmail(bodyText, { doneCount, totalCount }) {
+  console.log(`📡 Connecting to SMTP Server: ${SMTP_HOST}:${SMTP_PORT} (Secure: ${SMTP_SECURE})`);
+
   const transporter = nodemailer.createTransport({
     host: SMTP_HOST,
-    port: Number(SMTP_PORT),
-    secure: SMTP_SECURE === "true",
+    port: SMTP_PORT,
+    secure: SMTP_SECURE,
     auth: { user: SMTP_USER, pass: SMTP_PASS },
   });
 
-  const subject =
-    subjectMeta.totalToday > 0
-      ? `📘 Study Update ${today} — ${subjectMeta.doneToday}/${subjectMeta.totalToday} done (${subjectMeta.pctToday}%)`
-      : `📘 Study Update ${today}`;
+  const subject = totalCount > 0
+    ? `📘 Study Update ${today} — ${doneCount}/${totalCount} done`
+    : `📘 Daily Study Nudge — ${today}`;
 
   await transporter.sendMail({
     from: SMTP_USER,
     to: RECIPIENT_EMAIL,
     subject,
     text: bodyText,
-    html: `<div style="font-family:sans-serif;font-size:15px;line-height:1.6;color:#1C2541;white-space:pre-wrap;">${bodyText.replace(
-      /</g,
-      "&lt;"
-    )}</div>`,
+    html: `<div style="font-family:sans-serif;font-size:15px;line-height:1.6;color:#1C2541;">${bodyText.replace(/\n/g, "<br>")}</div>`,
   });
 
-  console.log(`Email sent to ${RECIPIENT_EMAIL}`);
+  console.log(`✅ Email successfully sent to ${RECIPIENT_EMAIL}`);
 }
 
-/* ---------- main ---------- */
+/* ---------- 7. 入口函数 ---------- */
 (async () => {
   try {
+    console.log("🚀 Starting daily study email worker...");
     const data = await fetchData();
-    if (!data.uid) {
-      console.log("No tasks found for any user today — sending a gentle nudge instead of skipping.");
-    }
-    const { text, pctToday, doneToday, totalToday } = await generateEmail(data);
-    await sendEmail(text, { pctToday, doneToday, totalToday });
+    const { text, doneCount, totalCount } = await generateEmailText(data);
+    await sendEmail(text, { doneCount, totalCount });
   } catch (err) {
-    console.error("Failed to send daily study email:", err);
+    console.error("❌ Failed to send daily study email:", err);
     process.exit(1);
   }
 })();
