@@ -40,9 +40,9 @@ function getFormattedDate(offsetDays = 0) {
 const today = getFormattedDate(0);
 const weekAgo = getFormattedDate(-6);
 
-// 返回 0=周一, 1=周二, 2=周三, 3=周四, 4=周五, 5=周六, 6=周日
+// Returns 0=Monday, 1=Tuesday, ..., 6=Sunday
 function getWeekdayIndex() {
-  const d = new Date().getDay(); // 0=周日, 6=周六
+  const d = new Date().getDay(); // 0=Sunday, 6=Saturday
   return d === 0 ? 6 : d - 1;
 }
 
@@ -101,7 +101,7 @@ Writing Instructions:
       Authorization: `Bearer ${DEEPSEEK_API_KEY}`,
     },
     body: JSON.stringify({
-      model: "deepseek-v4-pro", // ✅ 修复模型名称
+      model: "deepseek-v4-pro",
       messages: [{ role: "user", content: prompt }],
       temperature: 0.75,
     }),
@@ -118,7 +118,7 @@ Writing Instructions:
   );
 }
 
-/* ---------- 6. Fallback Notes (3种备用文案，也会轮换) ---------- */
+/* ---------- 6. Fallback Notes (English only) ---------- */
 function getFallbackNote({ doneTasks, todoTasks, streak }) {
   const variants = [
     `Hi ${USER_NAME}! You've done an incredible job today with ${doneTasks.length} tasks completed. ${
@@ -137,16 +137,13 @@ function getFallbackNote({ doneTasks, todoTasks, streak }) {
         : "All done – what a productive day! Now it's time to unwind."
     } Stay positive, stay healthy, and don't forget to enjoy the little moments. You're awesome! 🌈`,
   ];
-  // 用日期作为种子简单轮换
   const idx = new Date().getDate() % variants.length;
   return variants[idx];
 }
 
-/* ---------- 7. 七套完全不重复的卡片模板 (周一 ~ 周日) ---------- */
-
-// 辅助：生成待办和已办列表 HTML（不同模板可共用，但每个模板独立写以保证样式差异）
+/* ---------- 7. Helper functions for task lists (English only) ---------- */
 function buildTodoList(tasks) {
-  if (tasks.length === 0) return `<li style="color:#10B981;">🎉 全部完成！</li>`;
+  if (tasks.length === 0) return `<li style="color:#10B981;">🎉 All done!</li>`;
   return tasks
     .map(
       (t) =>
@@ -160,7 +157,7 @@ function buildTodoList(tasks) {
 }
 
 function buildDoneList(tasks) {
-  if (tasks.length === 0) return `<li style="color:#9CA3AF;">暂无已完成任务。</li>`;
+  if (tasks.length === 0) return `<li style="color:#9CA3AF;">No completed tasks yet.</li>`;
   return tasks
     .map(
       (t) =>
@@ -169,53 +166,55 @@ function buildDoneList(tasks) {
     .join("");
 }
 
-// ----- 周一模板：清新蓝白，圆角大卡片 -----
+/* ---------- 8. Seven unique card templates (English only, Monday–Sunday) ---------- */
+
+// Monday: Fresh blue & white
 function templateMonday({ aiContent, doneTasks, todoTasks, streak, today }) {
   return `
   <div style="background:#EFF6FF;padding:30px 10px;font-family:sans-serif;">
     <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:24px;padding:24px;box-shadow:0 8px 20px rgba(0,0,0,0.04);">
       <div style="border-bottom:3px solid #3B82F6;padding-bottom:12px;margin-bottom:20px;">
-        <div style="font-size:22px;font-weight:700;color:#1E3A8A;">📅 周一 · 新周启航</div>
-        <div style="font-size:13px;color:#6B7280;">${today} · 🔥 ${streak.current || 0}天连续</div>
+        <div style="font-size:22px;font-weight:700;color:#1E3A8A;">📅 Monday · New Week Launch</div>
+        <div style="font-size:13px;color:#6B7280;">${today} · 🔥 ${streak.current || 0}-day streak</div>
       </div>
       <div style="display:flex;gap:12px;margin-bottom:18px;">
         <div style="flex:1;background:#ECFDF5;border-radius:12px;padding:12px;text-align:center;border:1px solid #A7F3D0;">
           <div style="font-size:26px;font-weight:800;color:#059669;">${doneTasks.length}</div>
-          <div style="font-size:12px;color:#047857;">已完成</div>
+          <div style="font-size:12px;color:#047857;">Completed</div>
         </div>
         <div style="flex:1;background:#FFFBEB;border-radius:12px;padding:12px;text-align:center;border:1px solid #FDE68A;">
           <div style="font-size:26px;font-weight:800;color:#D97706;">${todoTasks.length}</div>
-          <div style="font-size:12px;color:#B45309;">待办</div>
+          <div style="font-size:12px;color:#B45309;">Pending</div>
         </div>
       </div>
       <div style="background:#F8FAFC;border-radius:12px;padding:14px;margin-bottom:18px;border-left:4px solid #3B82F6;font-size:14px;line-height:1.6;color:#1E293B;">${aiContent}</div>
-      <div><h4 style="margin:0 0 6px;font-size:14px;color:#1F2937;">📌 待办</h4><ul style="margin:0 0 12px;padding-left:18px;font-size:14px;">${buildTodoList(todoTasks)}</ul></div>
-      <div><h4 style="margin:0 0 6px;font-size:14px;color:#1F2937;">✅ 已完成</h4><ul style="margin:0;padding-left:18px;font-size:13px;">${buildDoneList(doneTasks)}</ul></div>
+      <div><h4 style="margin:0 0 6px;font-size:14px;color:#1F2937;">📌 Pending</h4><ul style="margin:0 0 12px;padding-left:18px;font-size:14px;">${buildTodoList(todoTasks)}</ul></div>
+      <div><h4 style="margin:0 0 6px;font-size:14px;color:#1F2937;">✅ Completed</h4><ul style="margin:0;padding-left:18px;font-size:13px;">${buildDoneList(doneTasks)}</ul></div>
     </div>
   </div>`;
 }
 
-// ----- 周二模板：暖橙活力，大数字突出 -----
+// Tuesday: Warm orange, bold numbers
 function templateTuesday({ aiContent, doneTasks, todoTasks, streak, today }) {
   return `
   <div style="background:#FFF7ED;padding:30px 10px;font-family:sans-serif;">
     <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:16px;padding:20px;border:1px solid #FED7AA;">
       <div style="text-align:center;margin-bottom:16px;">
-        <div style="font-size:28px;font-weight:800;color:#9A3412;">🔥 周二 · 火力全开</div>
-        <div style="font-size:13px;color:#78350F;">${today} · 连续 ${streak.current || 0} 天</div>
+        <div style="font-size:28px;font-weight:800;color:#9A3412;">🔥 Tuesday · Full Power</div>
+        <div style="font-size:13px;color:#78350F;">${today} · ${streak.current || 0}-day streak</div>
       </div>
       <div style="display:flex;justify-content:space-around;margin:16px 0;">
-        <div><span style="font-size:32px;font-weight:900;color:#EA580C;">${doneTasks.length}</span><span style="font-size:12px;color:#9A3412;display:block;">完成</span></div>
-        <div><span style="font-size:32px;font-weight:900;color:#D97706;">${todoTasks.length}</span><span style="font-size:12px;color:#9A3412;display:block;">待办</span></div>
+        <div><span style="font-size:32px;font-weight:900;color:#EA580C;">${doneTasks.length}</span><span style="font-size:12px;color:#9A3412;display:block;">Completed</span></div>
+        <div><span style="font-size:32px;font-weight:900;color:#D97706;">${todoTasks.length}</span><span style="font-size:12px;color:#9A3412;display:block;">Pending</span></div>
       </div>
       <div style="background:#FFF4E6;border-radius:10px;padding:14px;margin-bottom:16px;font-size:14px;line-height:1.6;color:#431407;">${aiContent}</div>
-      <div><h4 style="margin:0 0 4px;color:#9A3412;">⏳ 待办</h4><ul style="padding-left:18px;font-size:14px;">${buildTodoList(todoTasks)}</ul></div>
-      <div><h4 style="margin:8px 0 4px;color:#9A3412;">✔️ 已完成</h4><ul style="padding-left:18px;font-size:13px;">${buildDoneList(doneTasks)}</ul></div>
+      <div><h4 style="margin:0 0 4px;color:#9A3412;">⏳ Pending</h4><ul style="padding-left:18px;font-size:14px;">${buildTodoList(todoTasks)}</ul></div>
+      <div><h4 style="margin:8px 0 4px;color:#9A3412;">✔️ Completed</h4><ul style="padding-left:18px;font-size:13px;">${buildDoneList(doneTasks)}</ul></div>
     </div>
   </div>`;
 }
 
-// ----- 周三模板：翡翠绿，进度条风格 -----
+// Wednesday: Emerald green with progress bar
 function templateWednesday({ aiContent, doneTasks, todoTasks, streak, today }) {
   const total = doneTasks.length + todoTasks.length || 1;
   const pct = Math.round((doneTasks.length / total) * 100);
@@ -223,85 +222,85 @@ function templateWednesday({ aiContent, doneTasks, todoTasks, streak, today }) {
   <div style="background:#ECFDF5;padding:30px 10px;font-family:sans-serif;">
     <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:20px;padding:24px;box-shadow:0 4px 12px rgba(0,0,0,0.04);">
       <div style="display:flex;justify-content:space-between;align-items:center;">
-        <div><span style="font-size:20px;font-weight:700;color:#064E3B;">🌿 周三 · 持续深耕</span><div style="font-size:12px;color:#6B7280;">${today}</div></div>
+        <div><span style="font-size:20px;font-weight:700;color:#064E3B;">🌿 Wednesday · Steady Progress</span><div style="font-size:12px;color:#6B7280;">${today}</div></div>
         <span style="background:#D1FAE5;padding:4px 12px;border-radius:30px;font-size:13px;color:#065F46;">${pct}%</span>
       </div>
       <div style="background:#E5E7EB;height:8px;border-radius:10px;margin:12px 0 16px;overflow:hidden;"><div style="background:#10B981;height:100%;width:${pct}%;"></div></div>
-      <div style="display:flex;gap:12px;margin-bottom:14px;"><div style="flex:1;text-align:center;background:#F0FDF4;border-radius:10px;padding:8px;"><span style="font-weight:800;color:#047857;">${doneTasks.length}</span><span style="font-size:12px;color:#047857;display:block;">完成</span></div><div style="flex:1;text-align:center;background:#FEFCE8;border-radius:10px;padding:8px;"><span style="font-weight:800;color:#CA8A04;">${todoTasks.length}</span><span style="font-size:12px;color:#CA8A04;display:block;">待办</span></div></div>
+      <div style="display:flex;gap:12px;margin-bottom:14px;"><div style="flex:1;text-align:center;background:#F0FDF4;border-radius:10px;padding:8px;"><span style="font-weight:800;color:#047857;">${doneTasks.length}</span><span style="font-size:12px;color:#047857;display:block;">Completed</span></div><div style="flex:1;text-align:center;background:#FEFCE8;border-radius:10px;padding:8px;"><span style="font-weight:800;color:#CA8A04;">${todoTasks.length}</span><span style="font-size:12px;color:#CA8A04;display:block;">Pending</span></div></div>
       <div style="background:#F9FAFB;border-radius:12px;padding:14px;margin-bottom:16px;font-size:14px;line-height:1.6;color:#1F2937;">${aiContent}</div>
-      <div><h4 style="margin:0 0 4px;font-size:14px;">📋 待办</h4><ul style="padding-left:18px;font-size:14px;">${buildTodoList(todoTasks)}</ul></div>
-      <div><h4 style="margin:8px 0 4px;font-size:13px;color:#6B7280;">✅ 已完成</h4><ul style="padding-left:18px;font-size:13px;">${buildDoneList(doneTasks)}</ul></div>
-      <div style="text-align:center;font-size:12px;color:#9CA3AF;margin-top:12px;">🔥 连续 ${streak.current || 0} 天</div>
+      <div><h4 style="margin:0 0 4px;font-size:14px;">📋 Pending</h4><ul style="padding-left:18px;font-size:14px;">${buildTodoList(todoTasks)}</ul></div>
+      <div><h4 style="margin:8px 0 4px;font-size:13px;color:#6B7280;">✅ Completed</h4><ul style="padding-left:18px;font-size:13px;">${buildDoneList(doneTasks)}</ul></div>
+      <div style="text-align:center;font-size:12px;color:#9CA3AF;margin-top:12px;">🔥 ${streak.current || 0}-day streak</div>
     </div>
   </div>`;
 }
 
-// ----- 周四模板：深邃星空紫，优雅卡片 -----
+// Thursday: Deep starry purple, elegant
 function templateThursday({ aiContent, doneTasks, todoTasks, streak, today }) {
   return `
   <div style="background:#F5F3FF;padding:30px 10px;font-family:sans-serif;">
     <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:28px;padding:20px;border:1px solid #DDD6FE;">
       <div style="background:#4C1D95;color:white;border-radius:20px 20px 0 0;margin:-20px -20px 16px;padding:16px 20px;">
-        <div style="font-size:20px;font-weight:700;">🌌 周四 · 突破自我</div>
-        <div style="font-size:12px;opacity:0.8;">${today} · 连续 ${streak.current || 0} 天</div>
+        <div style="font-size:20px;font-weight:700;">🌌 Thursday · Breakthrough</div>
+        <div style="font-size:12px;opacity:0.8;">${today} · ${streak.current || 0}-day streak</div>
       </div>
-      <div style="display:flex;gap:12px;margin-bottom:14px;"><div style="flex:1;background:#F5F3FF;border-radius:12px;padding:8px;text-align:center;"><span style="font-size:24px;font-weight:800;color:#7C3AED;">${doneTasks.length}</span><div style="font-size:12px;color:#5B21B6;">完成</div></div><div style="flex:1;background:#FEF3C7;border-radius:12px;padding:8px;text-align:center;"><span style="font-size:24px;font-weight:800;color:#D97706;">${todoTasks.length}</span><div style="font-size:12px;color:#B45309;">待办</div></div></div>
+      <div style="display:flex;gap:12px;margin-bottom:14px;"><div style="flex:1;background:#F5F3FF;border-radius:12px;padding:8px;text-align:center;"><span style="font-size:24px;font-weight:800;color:#7C3AED;">${doneTasks.length}</span><div style="font-size:12px;color:#5B21B6;">Completed</div></div><div style="flex:1;background:#FEF3C7;border-radius:12px;padding:8px;text-align:center;"><span style="font-size:24px;font-weight:800;color:#D97706;">${todoTasks.length}</span><div style="font-size:12px;color:#B45309;">Pending</div></div></div>
       <div style="background:#F8FAFC;border-radius:12px;padding:12px;margin-bottom:14px;border-left:4px solid #7C3AED;font-size:14px;line-height:1.6;">${aiContent}</div>
-      <div><h4 style="margin:0 0 4px;font-size:14px;color:#4C1D95;">📌 待办</h4><ul style="padding-left:18px;font-size:14px;">${buildTodoList(todoTasks)}</ul></div>
-      <div><h4 style="margin:8px 0 4px;font-size:13px;color:#6B7280;">✅ 已完成</h4><ul style="padding-left:18px;font-size:13px;">${buildDoneList(doneTasks)}</ul></div>
+      <div><h4 style="margin:0 0 4px;font-size:14px;color:#4C1D95;">📌 Pending</h4><ul style="padding-left:18px;font-size:14px;">${buildTodoList(todoTasks)}</ul></div>
+      <div><h4 style="margin:8px 0 4px;font-size:13px;color:#6B7280;">✅ Completed</h4><ul style="padding-left:18px;font-size:13px;">${buildDoneList(doneTasks)}</ul></div>
     </div>
   </div>`;
 }
 
-// ----- 周五模板：阳光黄，迎接周末气氛 -----
+// Friday: Sunny yellow, weekend vibe
 function templateFriday({ aiContent, doneTasks, todoTasks, streak, today }) {
   return `
   <div style="background:#FFFBEB;padding:30px 10px;font-family:sans-serif;">
     <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:30px;padding:24px;box-shadow:0 8px 0 #F59E0B;">
-      <div style="text-align:center;margin-bottom:12px;"><span style="font-size:28px;font-weight:900;color:#B45309;">⭐ 周五 · 冲刺收官</span><div style="font-size:13px;color:#78716C;">${today}</div></div>
-      <div style="display:flex;justify-content:center;gap:24px;margin:12px 0;"><div style="text-align:center;"><span style="font-size:30px;font-weight:900;color:#16A34A;">${doneTasks.length}</span><div style="font-size:12px;color:#15803D;">完成</div></div><div style="text-align:center;"><span style="font-size:30px;font-weight:900;color:#EA580C;">${todoTasks.length}</span><div style="font-size:12px;color:#9A3412;">待办</div></div></div>
+      <div style="text-align:center;margin-bottom:12px;"><span style="font-size:28px;font-weight:900;color:#B45309;">⭐ Friday · Final Sprint</span><div style="font-size:13px;color:#78716C;">${today}</div></div>
+      <div style="display:flex;justify-content:center;gap:24px;margin:12px 0;"><div style="text-align:center;"><span style="font-size:30px;font-weight:900;color:#16A34A;">${doneTasks.length}</span><div style="font-size:12px;color:#15803D;">Completed</div></div><div style="text-align:center;"><span style="font-size:30px;font-weight:900;color:#EA580C;">${todoTasks.length}</span><div style="font-size:12px;color:#9A3412;">Pending</div></div></div>
       <div style="background:#FEF9C3;border-radius:16px;padding:14px;margin-bottom:14px;font-size:14px;line-height:1.6;color:#713F12;">${aiContent}</div>
-      <div><h4 style="margin:0 0 4px;color:#92400E;">📋 待办</h4><ul style="padding-left:18px;font-size:14px;">${buildTodoList(todoTasks)}</ul></div>
-      <div><h4 style="margin:8px 0 4px;color:#92400E;">✅ 已完成</h4><ul style="padding-left:18px;font-size:13px;">${buildDoneList(doneTasks)}</ul></div>
-      <div style="text-align:center;margin-top:12px;font-size:12px;color:#A16207;">🔥 连续 ${streak.current || 0} 天 · 周末加油！</div>
+      <div><h4 style="margin:0 0 4px;color:#92400E;">📋 Pending</h4><ul style="padding-left:18px;font-size:14px;">${buildTodoList(todoTasks)}</ul></div>
+      <div><h4 style="margin:8px 0 4px;color:#92400E;">✅ Completed</h4><ul style="padding-left:18px;font-size:13px;">${buildDoneList(doneTasks)}</ul></div>
+      <div style="text-align:center;margin-top:12px;font-size:12px;color:#A16207;">🔥 ${streak.current || 0}-day streak · Keep up!</div>
     </div>
   </div>`;
 }
 
-// ----- 周六模板：柔和粉彩，轻松治愈风 -----
+// Saturday: Soft pastel pink, cozy
 function templateSaturday({ aiContent, doneTasks, todoTasks, streak, today }) {
   return `
   <div style="background:#FDF2F8;padding:30px 10px;font-family:sans-serif;">
     <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:40px;padding:24px;border:2px solid #FBCFE8;">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;"><span style="font-size:28px;">🌸</span><span style="font-size:22px;font-weight:700;color:#831843;">周六 · 悠然自得</span></div>
-      <div style="font-size:13px;color:#9D174D;margin-bottom:14px;">${today} · 连续 ${streak.current || 0} 天</div>
-      <div style="display:flex;gap:8px;margin-bottom:14px;"><div style="flex:1;background:#FCE7F3;border-radius:30px;padding:10px;text-align:center;"><span style="font-weight:800;color:#BE185D;">${doneTasks.length}</span><div style="font-size:12px;color:#9D174D;">已完成</div></div><div style="flex:1;background:#FEF3C7;border-radius:30px;padding:10px;text-align:center;"><span style="font-weight:800;color:#B45309;">${todoTasks.length}</span><div style="font-size:12px;color:#92400E;">待办</div></div></div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;"><span style="font-size:28px;">🌸</span><span style="font-size:22px;font-weight:700;color:#831843;">Saturday · Easy Going</span></div>
+      <div style="font-size:13px;color:#9D174D;margin-bottom:14px;">${today} · ${streak.current || 0}-day streak</div>
+      <div style="display:flex;gap:8px;margin-bottom:14px;"><div style="flex:1;background:#FCE7F3;border-radius:30px;padding:10px;text-align:center;"><span style="font-weight:800;color:#BE185D;">${doneTasks.length}</span><div style="font-size:12px;color:#9D174D;">Completed</div></div><div style="flex:1;background:#FEF3C7;border-radius:30px;padding:10px;text-align:center;"><span style="font-weight:800;color:#B45309;">${todoTasks.length}</span><div style="font-size:12px;color:#92400E;">Pending</div></div></div>
       <div style="background:#FDF4FF;border-radius:20px;padding:14px;margin-bottom:14px;font-size:14px;line-height:1.6;color:#4C0519;">${aiContent}</div>
-      <div><h4 style="margin:0 0 4px;color:#9D174D;">📌 待办</h4><ul style="padding-left:18px;font-size:14px;">${buildTodoList(todoTasks)}</ul></div>
-      <div><h4 style="margin:8px 0 4px;color:#9D174D;">✅ 已完成</h4><ul style="padding-left:18px;font-size:13px;">${buildDoneList(doneTasks)}</ul></div>
+      <div><h4 style="margin:0 0 4px;color:#9D174D;">📌 Pending</h4><ul style="padding-left:18px;font-size:14px;">${buildTodoList(todoTasks)}</ul></div>
+      <div><h4 style="margin:8px 0 4px;color:#9D174D;">✅ Completed</h4><ul style="padding-left:18px;font-size:13px;">${buildDoneList(doneTasks)}</ul></div>
     </div>
   </div>`;
 }
 
-// ----- 周日模板：极简灰调，复盘与展望 -----
+// Sunday: Minimalist gray, reflection
 function templateSunday({ aiContent, doneTasks, todoTasks, streak, today }) {
   return `
   <div style="background:#F3F4F6;padding:30px 10px;font-family:sans-serif;">
     <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:16px;padding:24px;border-top:6px solid #374151;">
       <div style="border-bottom:1px solid #E5E7EB;padding-bottom:10px;margin-bottom:16px;">
-        <div style="font-size:22px;font-weight:700;color:#1F2937;">📆 周日 · 圆满收尾</div>
-        <div style="font-size:13px;color:#6B7280;">${today} · 连续 ${streak.current || 0} 天</div>
+        <div style="font-size:22px;font-weight:700;color:#1F2937;">📆 Sunday · Wrap Up</div>
+        <div style="font-size:13px;color:#6B7280;">${today} · ${streak.current || 0}-day streak</div>
       </div>
-      <div style="display:flex;gap:12px;margin-bottom:16px;"><div style="flex:1;background:#F9FAFB;border-radius:8px;padding:8px;text-align:center;border:1px solid #D1D5DB;"><span style="font-weight:800;color:#059669;">${doneTasks.length}</span><div style="font-size:12px;color:#4B5563;">完成</div></div><div style="flex:1;background:#F9FAFB;border-radius:8px;padding:8px;text-align:center;border:1px solid #D1D5DB;"><span style="font-weight:800;color:#D97706;">${todoTasks.length}</span><div style="font-size:12px;color:#4B5563;">待办</div></div></div>
+      <div style="display:flex;gap:12px;margin-bottom:16px;"><div style="flex:1;background:#F9FAFB;border-radius:8px;padding:8px;text-align:center;border:1px solid #D1D5DB;"><span style="font-weight:800;color:#059669;">${doneTasks.length}</span><div style="font-size:12px;color:#4B5563;">Completed</div></div><div style="flex:1;background:#F9FAFB;border-radius:8px;padding:8px;text-align:center;border:1px solid #D1D5DB;"><span style="font-weight:800;color:#D97706;">${todoTasks.length}</span><div style="font-size:12px;color:#4B5563;">Pending</div></div></div>
       <div style="background:#F9FAFB;border-radius:8px;padding:14px;margin-bottom:16px;font-size:14px;line-height:1.6;color:#1F2937;border:1px solid #E5E7EB;">${aiContent}</div>
-      <div><h4 style="margin:0 0 4px;font-size:14px;color:#374151;">📌 待办</h4><ul style="padding-left:18px;font-size:14px;">${buildTodoList(todoTasks)}</ul></div>
-      <div><h4 style="margin:8px 0 4px;font-size:13px;color:#6B7280;">✅ 已完成</h4><ul style="padding-left:18px;font-size:13px;">${buildDoneList(doneTasks)}</ul></div>
-      <div style="text-align:center;margin-top:16px;font-size:12px;color:#9CA3AF;">✨ 新的一周即将开始，继续加油！</div>
+      <div><h4 style="margin:0 0 4px;font-size:14px;color:#374151;">📌 Pending</h4><ul style="padding-left:18px;font-size:14px;">${buildTodoList(todoTasks)}</ul></div>
+      <div><h4 style="margin:8px 0 4px;font-size:13px;color:#6B7280;">✅ Completed</h4><ul style="padding-left:18px;font-size:13px;">${buildDoneList(doneTasks)}</ul></div>
+      <div style="text-align:center;margin-top:16px;font-size:12px;color:#9CA3AF;">✨ A new week begins – keep going!</div>
     </div>
   </div>`;
 }
 
-// 按周一~周日顺序存放
+// Weekly templates in order: Monday to Sunday
 const weeklyTemplates = [
   templateMonday,
   templateTuesday,
@@ -312,16 +311,16 @@ const weeklyTemplates = [
   templateSunday,
 ];
 
-/* ---------- 8. 构建卡片：根据星期几选取 ---------- */
+/* ---------- 9. Build card: select based on weekday ---------- */
 function buildCardHtml(aiContent, { doneTasks, todoTasks, streak }) {
-  const idx = getWeekdayIndex(); // 0=周一 ... 6=周日
+  const idx = getWeekdayIndex(); // 0=Monday ... 6=Sunday
   const selected = weeklyTemplates[idx];
-  const dayNames = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
-  console.log(`🎨 今日卡片模板: ${dayNames[idx]}`);
+  const dayNames = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+  console.log(`🎨 Today's card template: ${dayNames[idx]}`);
   return selected({ aiContent, doneTasks, todoTasks, streak, today });
 }
 
-/* ---------- 9. Send Mail ---------- */
+/* ---------- 10. Send Mail ---------- */
 async function sendEmail(aiText, { doneTasks, todoTasks, streak }) {
   console.log(`📡 Connecting to SMTP Server: ${SMTP_HOST}:${SMTP_PORT}`);
 
@@ -350,7 +349,7 @@ async function sendEmail(aiText, { doneTasks, todoTasks, streak }) {
   console.log(`✅ Email card successfully sent to ${RECIPIENT_EMAIL}`);
 }
 
-/* ---------- 10. Main Entry ---------- */
+/* ---------- 11. Main Entry ---------- */
 (async () => {
   try {
     console.log("🚀 Starting daily study email worker...");
