@@ -553,21 +553,52 @@
     if(next==='done') maybeUpdateStreak();
   }
 
-  function maybeUpdateStreak(){
-    const todaysTasks = tasks.filter(t=>t.date===todayStr());
-    const allDone = todaysTasks.length>0 && todaysTasks.every(t=>t.status==='done');
-    if(!allDone) return;
-    
-    let cur = streakInfo.current, longest = streakInfo.longest, last = streakInfo.lastCompletedDate;
-    if(last===todayStr()) return;
-    if(last===addDays(todayStr(),-1)) cur += 1; else cur = 1;
-    
-    longest = Math.max(longest, cur);
-    streakInfo = { current:cur, longest, lastCompletedDate: todayStr() };
-    saveStreak();
-    renderStats();
-    renderToday();
+  function checkStreakContinuity() {
+  const today = todayStr();
+  const yesterday = addDays(today, -1);
+
+  // 如果昨天没有完成记录，且今天也还没有完成 → 重置 current 为 0
+  if (streakInfo.lastCompletedDate !== yesterday &&
+      streakInfo.lastCompletedDate !== today) {
+    if (streakInfo.current !== 0) {
+      streakInfo.current = 0;
+      // 注意：保留 longest 不变
+      saveStreak();
+    }
   }
+}
+
+  function maybeUpdateStreak(){
+  const today = todayStr();
+  const todaysTasks = tasks.filter(t=>t.date===today);
+
+  // 今天的任务中至少有一项是“完成”状态，就算今天打卡成功
+  const hasCompleted = todaysTasks.some(t=>t.status==='done');
+  if (!hasCompleted) return;
+
+  let cur = streakInfo.current, longest = streakInfo.longest, last = streakInfo.lastCompletedDate;
+
+  // 如果今天已经记录过，不再重复计算
+  if (last === today) return;
+
+  if (last === addDays(today, -1)) {
+    // 昨天也完成了 → 连续天数 +1
+    cur += 1;
+  } else {
+    // 昨天没完成 → 重新开始计数
+    cur = 1;
+  }
+
+  longest = Math.max(longest, cur);
+  streakInfo = {
+    current: cur,
+    longest,
+    lastCompletedDate: today
+  };
+  saveStreak();
+  renderStats();
+  renderToday();
+}
 
   /* ---------------- templates ---------------- */
   window.applyTemplate = async function(tpl, targetDate){
@@ -978,20 +1009,24 @@
   function renderAll(){ renderToday(); renderCalendar(); renderStats(); }
 
   /* ---------------- Initialization ---------------- */
-  function initApp() {
-    const savedSettings = localStorage.getItem('studyos_settings');
-    if (savedSettings) settings = { ...settings, ...JSON.parse(savedSettings) };
-    if(!settings.tags || !settings.tags.length) settings.tags = defaultTags();
+async function initApp() {
+  const savedSettings = localStorage.getItem('studyos_settings');
+  if (savedSettings) settings = { ...settings, ...JSON.parse(savedSettings) };
+  if(!settings.tags || !settings.tags.length) settings.tags = defaultTags();
 
-    const savedTpls = localStorage.getItem('studyos_templates');
-    if (savedTpls) templates = JSON.parse(savedTpls);
+  const savedTpls = localStorage.getItem('studyos_templates');
+  if (savedTpls) templates = JSON.parse(savedTpls);
 
-    const savedStreak = localStorage.getItem('studyos_streak');
-    if (savedStreak) streakInfo = JSON.parse(savedStreak);
+  const savedStreak = localStorage.getItem('studyos_streak');
+  if (savedStreak) streakInfo = JSON.parse(savedStreak);
 
-    applySettingsToUI();
-    fetchTasksFromDB(); // 启动时从 Firestore 读取任务数据
-  }
+  applySettingsToUI();
+  await fetchTasksFromDB(); // 等待任务加载完成
+
+  // 新增：检查 streak 是否中断（需先定义 checkStreakContinuity）
+  checkStreakContinuity();
+  renderAll();
+}
 
   initApp();
 </script>
