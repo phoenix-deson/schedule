@@ -72,7 +72,7 @@ async function fetchData() {
     if (streakDoc.exists) streak = streakDoc.data();
   }
 
-  return { todayTasks, streak, uid };  // ← 加上 uid
+  return { todayTasks, streak, uid };
 }
 
 /* ---------- 更新连胜 ---------- */
@@ -80,13 +80,11 @@ async function updateStreak(uid, doneCount) {
   if (!uid) return null;
 
   const streakRef = db.collection("streaks").doc(uid);
-  
-  // 使用事务防止并发冲突（推荐）
+
   return db.runTransaction(async (transaction) => {
     const doc = await transaction.get(streakRef);
     let data = doc.exists ? doc.data() : { current: 0, longest: 0 };
 
-    // 如果今天有完成的任务（doneCount > 0），则连胜+1，否则重置为0
     if (doneCount > 0) {
       data.current += 1;
       if (data.current > data.longest) {
@@ -379,12 +377,13 @@ async function sendEmail(aiText, { doneTasks, todoTasks, streak }) {
 (async () => {
   try {
     console.log("🚀 Starting daily study email worker...");
-    const { todayTasks, streak } = await fetchData();
+    // 修复：从fetchData中解构出uid
+    const { todayTasks, streak, uid } = await fetchData();
 
     const doneTasks = todayTasks.filter((t) => t.status === "done");
     const todoTasks = todayTasks.filter((t) => t.status !== "done");
 
-    // --- 新增：更新连胜，并获取最新的连胜数据 ---
+    // 先更新连胜记录，获取最新数据
     let updatedStreak = streak;
     if (uid) {
       updatedStreak = await updateStreak(uid, doneTasks.length);
@@ -393,15 +392,17 @@ async function sendEmail(aiText, { doneTasks, todoTasks, streak }) {
       console.warn("⚠️ No uid found, streak not updated.");
     }
 
+    // 使用最新连胜数据生成AI笔记
     let aiContent;
     try {
-      aiContent = await generateAiNote({ doneTasks, todoTasks, streak });
+      aiContent = await generateAiNote({ doneTasks, todoTasks, streak: updatedStreak });
       console.log("🤖 AI note generated successfully.");
     } catch (err) {
       console.warn("⚠️ AI generation failed, using fallback note:", err.message);
-      aiContent = getFallbackNote({ doneTasks, todoTasks, streak });
+      aiContent = getFallbackNote({ doneTasks, todoTasks, streak: updatedStreak });
     }
 
+    // 发送邮件，携带最新的连胜信息
     await sendEmail(aiContent, { doneTasks, todoTasks, streak: updatedStreak });
   } catch (err) {
     console.error("❌ Failed to send daily study email:", err);
