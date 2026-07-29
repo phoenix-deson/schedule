@@ -72,7 +72,33 @@ async function fetchData() {
     if (streakDoc.exists) streak = streakDoc.data();
   }
 
-  return { todayTasks, streak };
+  return { todayTasks, streak, uid };  // ← 加上 uid
+}
+
+/* ---------- 更新连胜 ---------- */
+async function updateStreak(uid, doneCount) {
+  if (!uid) return null;
+
+  const streakRef = db.collection("streaks").doc(uid);
+  
+  // 使用事务防止并发冲突（推荐）
+  return db.runTransaction(async (transaction) => {
+    const doc = await transaction.get(streakRef);
+    let data = doc.exists ? doc.data() : { current: 0, longest: 0 };
+
+    // 如果今天有完成的任务（doneCount > 0），则连胜+1，否则重置为0
+    if (doneCount > 0) {
+      data.current += 1;
+      if (data.current > data.longest) {
+        data.longest = data.current;
+      }
+    } else {
+      data.current = 0;
+    }
+
+    transaction.set(streakRef, data);
+    return data; // 返回更新后的连胜数据
+  });
 }
 
 /* ---------- 5. AI Note Generation (with fallback) ---------- */
@@ -101,7 +127,7 @@ Writing Instructions:
       Authorization: `Bearer ${DEEPSEEK_API_KEY}`,
     },
     body: JSON.stringify({
-      model: "deepseek-v4-pro",
+      model: "deepseek-v4-flash",
       messages: [{ role: "user", content: prompt }],
       temperature: 0.75,
     }),
@@ -358,6 +384,15 @@ async function sendEmail(aiText, { doneTasks, todoTasks, streak }) {
     const doneTasks = todayTasks.filter((t) => t.status === "done");
     const todoTasks = todayTasks.filter((t) => t.status !== "done");
 
+    // --- 新增：更新连胜，并获取最新的连胜数据 ---
+    let updatedStreak = streak;
+    if (uid) {
+      updatedStreak = await updateStreak(uid, doneTasks.length);
+      console.log(`🔥 Streak updated: current=${updatedStreak.current}, longest=${updatedStreak.longest}`);
+    } else {
+      console.warn("⚠️ No uid found, streak not updated.");
+    }
+
     let aiContent;
     try {
       aiContent = await generateAiNote({ doneTasks, todoTasks, streak });
@@ -367,7 +402,7 @@ async function sendEmail(aiText, { doneTasks, todoTasks, streak }) {
       aiContent = getFallbackNote({ doneTasks, todoTasks, streak });
     }
 
-    await sendEmail(aiContent, { doneTasks, todoTasks, streak });
+    await sendEmail(aiContent, { doneTasks, todoTasks, streak: updatedStreak });
   } catch (err) {
     console.error("❌ Failed to send daily study email:", err);
     process.exit(1);
